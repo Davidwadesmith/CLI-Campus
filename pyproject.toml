@@ -1,0 +1,43 @@
+[project]
+name = "cli-campus"
+version = "0.1.0"
+description = "Agent-Native Campus Toolkit — 校园数字基建的系统调用与 Agent-Native 底层武器库"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "typer>=0.9.0",
+    "pydantic>=2.0.0",
+    "rich>=13.0.0",
+    "keyring>=24.0.0",
+]
+
+[project.scripts]
+campus = "cli_campus.main:app"
+
+[dependency-groups]
+dev = [
+    "ruff>=0.4.0",
+    "mypy>=1.8.0",
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+]
+
+[tool.ruff]
+line-length = 88
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]
+
+[tool.mypy]
+python_version = "3.10"
+strict = true
+plugins = ["pydantic.mypy"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
