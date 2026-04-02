@@ -848,10 +848,14 @@ def fetch(
         yaml_path = _DEFAULT_CONFIG_DIR / f"{name}.yml"
     if not yaml_path.exists():
         if _json_output:
-            typer.echo(json.dumps({
-                "error": "not_found",
-                "message": f"未找到配置: {name}",
-            }))
+            typer.echo(
+                json.dumps(
+                    {
+                        "error": "not_found",
+                        "message": f"未找到配置: {name}",
+                    }
+                )
+            )
         else:
             console.print(f"[red]✗[/red] 未找到声明式配置: [bold]{name}[/bold]")
             console.print(f"  配置目录: {_DEFAULT_CONFIG_DIR}")
@@ -1028,8 +1032,7 @@ def sop_list() -> None:
 @sop_app.command("run")
 def sop_run(
     name: str = typer.Argument(
-        help="SOP 宏指令名称"
-        "（sops/ 下的文件名，不含 .yaml 后缀）。",
+        help="SOP 宏指令名称（sops/ 下的文件名，不含 .yaml 后缀）。",
     ),
 ) -> None:
     """执行 SOP 宏指令 — 顺序运行预设步骤并渲染输出。"""
@@ -1040,10 +1043,14 @@ def sop_run(
         sop_path = _DEFAULT_SOP_DIR / f"{name}.yml"
     if not sop_path.exists():
         if _json_output:
-            typer.echo(json.dumps({
-                "error": "not_found",
-                "message": f"未找到 SOP: {name}",
-            }))
+            typer.echo(
+                json.dumps(
+                    {
+                        "error": "not_found",
+                        "message": f"未找到 SOP: {name}",
+                    }
+                )
+            )
         else:
             console.print(f"[red]✗[/red] 未找到 SOP: [bold]{name}[/bold]")
             console.print(f"  SOP 目录: {_DEFAULT_SOP_DIR}")

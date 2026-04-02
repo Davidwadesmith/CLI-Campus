@@ -151,11 +151,13 @@ def main() -> None:
             print(f"🤖 LLM 调用: {func.name}({json.dumps(args, ensure_ascii=False)})")
 
             result = run_campus_command(func.name, args)
-            tool_results.append({
-                "tool_call_id": tc.id,
-                "role": "tool",
-                "content": result,
-            })
+            tool_results.append(
+                {
+                    "tool_call_id": tc.id,
+                    "role": "tool",
+                    "content": result,
+                }
+            )
             print(f"  📦 结果: {result[:200]}{'...' if len(result) > 200 else ''}\n")
 
         # 将结果发回 LLM 获取最终回答

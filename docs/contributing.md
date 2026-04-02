@@ -83,6 +83,17 @@ select = ["E", "F", "I"]  # 基础错误 + 逻辑错误 + import 排序
 mypy cli_campus/
 ```
 
+### Pre-commit Hook（推荐）
+
+项目已配置 `.pre-commit-config.yaml`，在每次 `git commit` 前自动运行 Ruff lint + format：
+
+```bash
+pip install pre-commit
+pre-commit install
+```
+
+安装后每次提交会自动格式化并检查代码，避免 CI 因格式问题失败。
+
 ### 命名规范
 
 | 类型 | 规范 | 示例 |

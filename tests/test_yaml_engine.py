@@ -123,12 +123,14 @@ class TestJsonExtractor:
     """JSON 抽取器测试。"""
 
     def test_extract_flat_array(self) -> None:
-        response = json.dumps({
-            "data": [
-                {"title": "新闻A", "date": "2026-01-01"},
-                {"title": "新闻B", "date": "2026-01-02"},
-            ]
-        })
+        response = json.dumps(
+            {
+                "data": [
+                    {"title": "新闻A", "date": "2026-01-01"},
+                    {"title": "新闻B", "date": "2026-01-02"},
+                ]
+            }
+        )
         config = ExtractConfig(
             type="json",
             root="$.data",
@@ -287,6 +289,7 @@ class TestDeclarativeAdapter:
         )
         adapter = DeclarativeAdapter(config)
         import asyncio
+
         assert asyncio.run(adapter.check_auth()) is True
 
     def test_fetch_json(self) -> None:
@@ -298,10 +301,14 @@ class TestDeclarativeAdapter:
         )
         adapter = DeclarativeAdapter(config)
 
-        mock_response = type("Response", (), {
-            "text": json.dumps({"items": [{"name": "Test News"}]}),
-            "raise_for_status": lambda self: None,
-        })()
+        mock_response = type(
+            "Response",
+            (),
+            {
+                "text": json.dumps({"items": [{"name": "Test News"}]}),
+                "raise_for_status": lambda self: None,
+            },
+        )()
 
         import asyncio
 
@@ -330,10 +337,14 @@ class TestDeclarativeAdapter:
         )
         adapter = DeclarativeAdapter(config)
 
-        mock_response = type("Response", (), {
-            "text": json.dumps([{"title": "测试"}]),
-            "raise_for_status": lambda self: None,
-        })()
+        mock_response = type(
+            "Response",
+            (),
+            {
+                "text": json.dumps([{"title": "测试"}]),
+                "raise_for_status": lambda self: None,
+            },
+        )()
 
         import asyncio
 

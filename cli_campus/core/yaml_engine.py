@@ -258,9 +258,7 @@ class DeclarativeAdapter(BaseCampusAdapter):
                     )
                 resp.raise_for_status()
             except httpx.HTTPError as exc:
-                raise AdapterError(
-                    f"[{self._yaml.name}] 请求失败: {exc}"
-                ) from exc
+                raise AdapterError(f"[{self._yaml.name}] 请求失败: {exc}") from exc
 
         # 选择抽取器
         extract_type = self._yaml.extract.type
@@ -285,9 +283,7 @@ class DeclarativeAdapter(BaseCampusAdapter):
             if transform.title_prefix:
                 title = f"{transform.title_prefix} {title}"
 
-            event_hash = md5(
-                f"{self._yaml.name}:{title}".encode()
-            ).hexdigest()[:12]
+            event_hash = md5(f"{self._yaml.name}:{title}".encode()).hexdigest()[:12]
 
             events.append(
                 CampusEvent(

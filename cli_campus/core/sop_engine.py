@@ -149,10 +149,12 @@ class SOPRunner:
         if result.returncode != 0:
             # 返回错误信息但不中断 SOP
             stderr = result.stderr.strip()[:200] if result.stderr else ""
-            return [{
-                "error": f"命令执行失败 (exit={result.returncode})",
-                "stderr": stderr,
-            }]
+            return [
+                {
+                    "error": f"命令执行失败 (exit={result.returncode})",
+                    "stderr": stderr,
+                }
+            ]
 
         # 解析 JSON 输出
         stdout = result.stdout.strip()
@@ -174,10 +176,14 @@ class SOPRunner:
         # 构建步骤结果上下文: steps.get_courses.result → list[dict]
         steps_ctx: dict[str, Any] = {}
         for step in self.sop.steps:
-            steps_ctx[step.id] = type("StepResult", (), {
-                "result": self.results.get(step.id, []),
-                "count": len(self.results.get(step.id, [])),
-            })()
+            steps_ctx[step.id] = type(
+                "StepResult",
+                (),
+                {
+                    "result": self.results.get(step.id, []),
+                    "count": len(self.results.get(step.id, [])),
+                },
+            )()
 
         template = Template(self.sop.output.template)
         return template.render(

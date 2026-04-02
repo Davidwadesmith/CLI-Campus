@@ -42,9 +42,7 @@ class TestSchemaExport:
 
     def test_export_course_week_is_integer(self) -> None:
         tools = export_function_calling_schema(app)
-        course_tool = next(
-            t for t in tools if t["function"]["name"] == "campus_course"
-        )
+        course_tool = next(t for t in tools if t["function"]["name"] == "campus_course")
         props = course_tool["function"]["parameters"]["properties"]
         assert props["week"]["type"] == "integer"
 
