@@ -680,6 +680,114 @@ def exam(
     _render_exams(events, semester_code)
 
 
+@app.command("bus")
+def bus(
+    route: Optional[str] = typer.Option(
+        None,
+        "--route",
+        "-r",
+        help="按线路名称筛选（模糊匹配，如 '循环' '兰台' '无线谷'）。",
+    ),
+    schedule_type: Optional[str] = typer.Option(
+        None,
+        "--type",
+        "-t",
+        help="时刻表类型: workday / holiday / spring_festival。",
+    ),
+) -> None:
+    """查询校车时刻表 — 显示九龙湖校区接驳车发车时间。"""
+    from cli_campus.adapters.bus_adapter import BusAdapter
+
+    adapter = BusAdapter()
+
+    events = asyncio.run(
+        adapter.fetch(route=route or "", schedule_type=schedule_type or "")
+    )
+
+    if _json_output:
+        _output_events(events)
+        return
+
+    if not events:
+        console.print("[dim]暂无匹配的校车时刻数据。[/dim]")
+        return
+
+    _render_bus(events, adapter)
+
+
+def _render_bus(events: list[CampusEvent], adapter: "object") -> None:
+    """渲染校车时刻表。"""
+    from cli_campus.adapters.bus_adapter import BusAdapter
+
+    assert isinstance(adapter, BusAdapter)
+
+    # 按 (route_name, direction) 分组
+    groups: dict[str, list[CampusEvent]] = {}
+    for event in events:
+        c = event.content
+        key = f"{c['route_name']}|{c['departure_stop']}→{c['arrival_stop']}"
+        groups.setdefault(key, []).append(event)
+
+    for key, group_events in groups.items():
+        route_name, direction = key.split("|", 1)
+
+        # 同一组内按 schedule_type 分列
+        by_type: dict[str, list[str]] = {}
+        for ev in group_events:
+            c = ev.content
+            note = c.get("note", "")
+            by_type.setdefault(note, []).append(c["departure_time"])
+
+        table = Table(
+            title=f"🚌 {route_name} ({direction})",
+            show_header=True,
+            header_style="bold cyan",
+            pad_edge=True,
+        )
+        table.add_column("时段", justify="center", style="bold", width=6)
+        for stype_label in by_type:
+            table.add_column(stype_label, justify="left", min_width=20)
+
+        # 按时段分组展示
+        time_periods = [
+            ("早间", "07", "10"),
+            ("上午", "10", "12"),
+            ("中午", "12", "14"),
+            ("下午", "14", "17"),
+            ("傍晚", "17", "19"),
+            ("晚间", "19", "24"),
+        ]
+
+        for period_name, start_h, end_h in time_periods:
+            row_cells: list[str] = []
+            has_data = False
+            for stype_label in by_type:
+                times = [t for t in by_type[stype_label] if start_h <= t[:2] < end_h]
+                if times:
+                    has_data = True
+                row_cells.append("  ".join(times) if times else "")
+            if has_data:
+                table.add_row(period_name, *row_cells)
+
+        console.print(table)
+
+    # 显示备注（仅当前展示的线路）
+    displayed_routes = {k.split("|", 1)[0] for k in groups}
+    notes: list[str] = []
+    for rn in displayed_routes:
+        notes.extend(adapter.get_notes(rn))
+    if notes:
+        console.print()
+        for note in notes[:4]:
+            console.print(f"  [dim]• {note}[/dim]")
+
+    meta = adapter.get_meta()
+    if meta.get("last_updated"):
+        console.print(
+            f"\n  [dim]数据更新: {meta['last_updated']}  来源: 东南大学总务处[/dim]"
+        )
+
+
 def _render_exams(events: list[CampusEvent], semester_code: str) -> None:
     """渲染考试安排表格。"""
     from cli_campus.adapters.course_adapter import _SEMESTER_NAMES
