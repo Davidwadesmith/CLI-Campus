@@ -924,6 +924,404 @@ def fetch_list() -> None:
     console.print(table)
 
 
+# ---------------------------------------------------------------------------
+# Venue 子命令组 (场馆预约)
+# ---------------------------------------------------------------------------
+
+venue_app = typer.Typer(
+    name="venue",
+    help="场馆预约 — 查询场馆、时段，预约与取消。",
+    no_args_is_help=True,
+)
+app.add_typer(venue_app, name="venue")
+
+
+@venue_app.command("list")
+def venue_list(
+    type_name: str = typer.Option(
+        "羽毛球场",
+        "--type",
+        "-t",
+        help="场馆类型 (如 '羽毛球场'、'网球场'、'篮球馆'、'乒乓球台')。",
+    ),
+    campus: Optional[str] = typer.Option(
+        None,
+        "--campus",
+        "-c",
+        help="按校区筛选 (如 '九龙湖'、'四牌楼'、'丁家桥'、'无锡')。",
+    ),
+) -> None:
+    """列出指定类型的所有可预约场馆。"""
+    from cli_campus.adapters.venue_adapter import VenueAdapter
+
+    adapter = VenueAdapter()
+
+    try:
+        venues = asyncio.run(adapter.get_venues(type_name))
+    except AuthRequiredError:
+        _handle_auth_required()
+    except AuthFailedError as exc:
+        _handle_auth_failed(exc)
+    except AdapterError as exc:
+        _handle_adapter_error(exc)
+    finally:
+        asyncio.run(adapter.close())
+
+    if campus:
+        venues = [v for v in venues if campus in v.campus or campus in v.name]
+
+    if _json_output:
+        typer.echo(json.dumps([v.model_dump() for v in venues], ensure_ascii=False))
+        return
+
+    if not venues:
+        console.print("[dim]暂无匹配的场馆。[/dim]")
+        return
+
+    table = Table(
+        title=f"🏟 {type_name} 场馆列表",
+        show_header=True,
+        header_style="bold cyan",
+    )
+    table.add_column("编号", style="bold", min_width=8)
+    table.add_column("名称", min_width=16)
+    table.add_column("校区", justify="center", min_width=6)
+    table.add_column("容量", justify="center", min_width=4)
+
+    for v in venues:
+        table.add_row(v.number, v.name, v.campus, str(v.capacity))
+
+    console.print(table)
+
+
+@venue_app.command("slots")
+def venue_slots(
+    date: Optional[str] = typer.Option(
+        None,
+        "--date",
+        "-d",
+        help="查询日期 (YYYY-MM-DD 格式，默认明天)。",
+    ),
+    type_name: str = typer.Option(
+        "羽毛球场",
+        "--type",
+        "-t",
+        help="场馆类型。",
+    ),
+    campus: Optional[str] = typer.Option(
+        None,
+        "--campus",
+        "-c",
+        help="按校区筛选 (如 '九龙湖')。",
+    ),
+    venue_number: Optional[str] = typer.Option(
+        None,
+        "--venue",
+        "-v",
+        help="按场馆编号筛选 (如 'JLH01')。",
+    ),
+) -> None:
+    """查询场馆时段可用情况 — 查看哪些时段可预约。"""
+    import datetime as dt
+
+    from cli_campus.adapters.venue_adapter import VenueAdapter
+
+    query_date = date or (dt.date.today() + dt.timedelta(days=1)).strftime("%Y-%m-%d")
+    adapter = VenueAdapter()
+
+    try:
+        venues = asyncio.run(adapter.get_venues(type_name))
+        if campus:
+            venues = [v for v in venues if campus in v.campus or campus in v.name]
+        if venue_number:
+            venues = [v for v in venues if venue_number.upper() in v.number.upper()]
+
+        # 收集所有时段
+        all_slots: list[tuple["object", "object"]] = []
+        for venue in venues:
+            try:
+                slots = asyncio.run(adapter.get_time_slots(venue.venue_id, query_date))
+                for slot in slots:
+                    all_slots.append((venue, slot))
+            except AdapterError:
+                pass
+    except AuthRequiredError:
+        _handle_auth_required()
+    except AuthFailedError as exc:
+        _handle_auth_failed(exc)
+    except AdapterError as exc:
+        _handle_adapter_error(exc)
+    finally:
+        asyncio.run(adapter.close())
+
+    if _json_output:
+        payload = [
+            {"venue": v.model_dump(), "slot": s.model_dump()} for v, s in all_slots
+        ]
+        typer.echo(json.dumps(payload, ensure_ascii=False))
+        return
+
+    if not all_slots:
+        console.print(f"[dim]{query_date} 暂无可查询的时段。[/dim]")
+        return
+
+    _render_venue_slots(all_slots, query_date, type_name)
+
+
+def _render_venue_slots(
+    all_slots: list[tuple["object", "object"]],
+    query_date: str,
+    type_name: str,
+) -> None:
+    """渲染场馆时段为紧凑的时段网格。
+
+    行 = 时段，列 = 场地，单元格 = 可用状态。
+    """
+    from cli_campus.core.models import TimeSlotInfo, VenueInfo
+
+    # 按场馆分组
+    venues_seen: dict[str, "VenueInfo"] = {}
+    grid: dict[tuple[str, str], "TimeSlotInfo"] = {}
+    time_set: set[str] = set()
+
+    for venue, slot in all_slots:
+        assert isinstance(venue, VenueInfo)
+        assert isinstance(slot, TimeSlotInfo)
+        venues_seen[venue.venue_id] = venue
+        key = (slot.start_time, venue.venue_id)
+        grid[key] = slot
+        time_set.add(slot.start_time)
+
+    # 排序
+    venues_ordered = sorted(venues_seen.values(), key=lambda v: v.number)
+    times_ordered = sorted(time_set)
+
+    table = Table(
+        title=f"🏟 {type_name} 时段 ({query_date})",
+        show_header=True,
+        header_style="bold cyan",
+        show_lines=True,
+        expand=True,
+    )
+    table.add_column("时段", justify="center", style="bold", width=12)
+    for v in venues_ordered:
+        label = v.number or v.name[:6]
+        table.add_column(label, justify="center", width=6)
+
+    for t in times_ordered:
+        cells: list[str] = []
+        # Find end_time from any slot at this time
+        end_t = ""
+        for v in venues_ordered:
+            slot = grid.get((t, v.venue_id))
+            if slot:
+                end_t = slot.end_time
+                break
+        time_label = f"{t}-{end_t}" if end_t else t
+
+        for v in venues_ordered:
+            slot = grid.get((t, v.venue_id))
+            if slot:
+                if slot.available > 0:
+                    cells.append(f"[green]✓{slot.available}[/green]")
+                else:
+                    cells.append("[red dim]满[/red dim]")
+            else:
+                cells.append("[dim]-[/dim]")
+
+        table.add_row(time_label, *cells)
+
+    console.print(table)
+
+    # 图例
+    console.print(
+        "\n  [green]✓N[/green] = 可预约(剩N位)  "
+        "[red dim]满[/red dim] = 已满  "
+        "[dim]-[/dim] = 无数据"
+    )
+
+
+@venue_app.command("book")
+def venue_book(
+    venue: str = typer.Option(
+        ...,
+        "--venue",
+        "-v",
+        help="场馆编号 (如 'JLH01') 或场馆 UUID。",
+    ),
+    date: Optional[str] = typer.Option(
+        None,
+        "--date",
+        "-d",
+        help="预约日期 (YYYY-MM-DD，默认明天)。",
+    ),
+    start: str = typer.Option(
+        ...,
+        "--start",
+        "-s",
+        help="开始时间 (HH:MM，如 '09:00')。",
+    ),
+    end: str = typer.Option(
+        ...,
+        "--end",
+        "-e",
+        help="结束时间 (HH:MM，如 '10:00')。",
+    ),
+    event: str = typer.Option(
+        "运动健身",
+        "--event",
+        help="活动名称。",
+    ),
+    type_name: str = typer.Option(
+        "羽毛球场",
+        "--type",
+        "-t",
+        help="场馆类型 (用于通过编号查找场馆 UUID)。",
+    ),
+) -> None:
+    """预约场馆 — 提交预约请求。"""
+    import datetime as dt
+
+    from cli_campus.adapters.venue_adapter import VenueAdapter
+
+    booking_date = date or (dt.date.today() + dt.timedelta(days=1)).strftime("%Y-%m-%d")
+    adapter = VenueAdapter()
+
+    try:
+        # 如果是编号而非 UUID，先查找对应的 UUID
+        venue_id = venue
+        if len(venue) < 36:
+            venues = asyncio.run(adapter.get_venues(type_name))
+            matched = [v for v in venues if v.number.upper() == venue.upper()]
+            if not matched:
+                if _json_output:
+                    typer.echo(
+                        json.dumps(
+                            {
+                                "error": "not_found",
+                                "message": f"未找到场馆: {venue}",
+                            }
+                        )
+                    )
+                else:
+                    console.print(
+                        f"[red]✗[/red] 未找到编号为 [bold]{venue}[/bold] 的场馆"
+                    )
+                raise typer.Exit(code=1)
+            venue_id = matched[0].venue_id
+
+        booking = asyncio.run(
+            adapter.make_booking(venue_id, booking_date, start, end, event)
+        )
+    except AuthRequiredError:
+        _handle_auth_required()
+    except AuthFailedError as exc:
+        _handle_auth_failed(exc)
+    except AdapterError as exc:
+        _handle_adapter_error(exc)
+    finally:
+        asyncio.run(adapter.close())
+
+    if _json_output:
+        typer.echo(json.dumps(booking.model_dump(), ensure_ascii=False))
+    else:
+        console.print(
+            f"[green]✓[/green] 预约成功！\n"
+            f"  场馆: [bold]{booking.venue_name}[/bold]\n"
+            f"  日期: {booking.date}\n"
+            f"  时段: {booking.start_time} - {booking.end_time}\n"
+            f"  活动: {booking.event}\n"
+            f"  预约ID: [dim]{booking.booking_id}[/dim]"
+        )
+
+
+@venue_app.command("cancel")
+def venue_cancel(
+    booking_id: str = typer.Argument(help="要取消的预约 ID。"),
+    reason: str = typer.Option("", "--reason", "-r", help="取消原因。"),
+) -> None:
+    """取消场馆预约。"""
+    from cli_campus.adapters.venue_adapter import VenueAdapter
+
+    adapter = VenueAdapter()
+
+    try:
+        success = asyncio.run(adapter.cancel_booking(booking_id, reason))
+    except AuthRequiredError:
+        _handle_auth_required()
+    except AuthFailedError as exc:
+        _handle_auth_failed(exc)
+    except AdapterError as exc:
+        _handle_adapter_error(exc)
+    finally:
+        asyncio.run(adapter.close())
+
+    if _json_output:
+        typer.echo(json.dumps({"status": "ok" if success else "failed"}))
+    elif success:
+        console.print(f"[green]✓[/green] 预约 [bold]{booking_id}[/bold] 已取消")
+    else:
+        console.print("[red]✗[/red] 取消失败")
+        raise typer.Exit(code=1)
+
+
+@venue_app.command("my")
+def venue_my() -> None:
+    """查看我的预约记录。"""
+    from cli_campus.adapters.venue_adapter import VenueAdapter
+
+    adapter = VenueAdapter()
+
+    try:
+        bookings = asyncio.run(adapter.get_my_bookings())
+    except AuthRequiredError:
+        _handle_auth_required()
+    except AuthFailedError as exc:
+        _handle_auth_failed(exc)
+    except AdapterError as exc:
+        _handle_adapter_error(exc)
+    finally:
+        asyncio.run(adapter.close())
+
+    if _json_output:
+        typer.echo(json.dumps([b.model_dump() for b in bookings], ensure_ascii=False))
+        return
+
+    if not bookings:
+        console.print("[dim]暂无预约记录。[/dim]")
+        return
+
+    table = Table(
+        title="📋 我的预约",
+        show_header=True,
+        header_style="bold cyan",
+    )
+    table.add_column("场馆", style="bold", min_width=12)
+    table.add_column("日期", justify="center", min_width=10)
+    table.add_column("时段", justify="center", min_width=10)
+    table.add_column("活动", min_width=8)
+    table.add_column("状态", justify="center", min_width=6)
+    table.add_column("预约ID", style="dim", max_width=20)
+
+    _STATE_LABELS = {
+        0: "[yellow]待审核[/yellow]",
+        1: "[green]已通过[/green]",
+        2: "[red]已取消[/red]",
+    }
+    for b in bookings:
+        state_text = _STATE_LABELS.get(b.state, str(b.state))
+        table.add_row(
+            b.venue_name,
+            b.date,
+            f"{b.start_time}-{b.end_time}",
+            b.event,
+            state_text,
+            b.booking_id[:12] + "...",
+        )
+
+    console.print(table)
+
+
 def _render_declarative_events(events: list[CampusEvent], title: str) -> None:
     """渲染声明式适配器返回的事件表格。"""
     table = Table(

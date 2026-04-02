@@ -100,6 +100,11 @@ class CampusEvent(BaseModel):
 | `BusRoute` | 校车时刻 | route_name, departure_time, departure_stop, arrival_stop |
 | `TaskItem` | 作业/DDL | task_id, platform, title, deadline, is_completed |
 | `CardInfo` | 一卡通 | student_id, name, balance, status |
+| `GradeInfo` | 成绩 | course_name, score, credit, gpa, semester |
+| `ExamInfo` | 考试安排 | course_name, time_text, location, seat_number |
+| `VenueInfo` | 场馆信息 | venue_id, name, number, type_name, campus, capacity |
+| `TimeSlotInfo` | 场馆时段 | slot_id, start_time, end_time, available, date |
+| `BookingInfo` | 预约记录 | booking_id, venue_name, date, start_time, end_time, state |
 
 ### 3.3 枚举类型
 
@@ -118,6 +123,7 @@ class AdapterSource(str, Enum):
     SEU_CAS = "seu_cas"
     SEU_CARD = "seu_card"
     SEU_EHALL = "seu_ehall"
+    SEU_VENUE = "seu_venue"
     ZHENGFANG = "zhengfang"
     CHAOXING = "chaoxing"
     YUKETANG = "yuketang"

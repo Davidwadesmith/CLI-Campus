@@ -38,6 +38,7 @@ class AdapterSource(str, Enum):
     SEU_CAS = "seu_cas"
     SEU_CARD = "seu_card"
     SEU_EHALL = "seu_ehall"
+    SEU_VENUE = "seu_venue"
     ZHENGFANG = "zhengfang"
     CHAOXING = "chaoxing"
     YUKETANG = "yuketang"
@@ -249,3 +250,76 @@ class ExamInfo(BaseModel):
     semester: str = Field(default="", description="所属学期代码")
     exam_name: str = Field(default="", description="考试名称")
     credit: float = Field(default=0.0, description="学分")
+
+
+# ---------------------------------------------------------------------------
+# 领域模型 — VenueInfo (场馆预约)
+# ---------------------------------------------------------------------------
+
+
+class VenueInfo(BaseModel):
+    """场馆信息模型 — 单个可预约场地。
+
+    Attributes:
+        venue_id: 场馆唯一标识 (GraphQL Resources.id)。
+        name: 场馆名称 (如 "九龙湖一号场地")。
+        number: 场馆编号 (如 "JLH01")。
+        type_name: 场馆类型 (如 "羽毛球场")。
+        campus: 校区 (从编号推断: JLH/SPL/DJQ/WX)。
+        capacity: 容量 (同场最大人数)。
+        state: 状态 (0=正常)。
+    """
+
+    venue_id: str = Field(..., description="场馆唯一标识")
+    name: str = Field(..., description="场馆名称")
+    number: str = Field(default="", description="场馆编号")
+    type_name: str = Field(default="", description="场馆类型")
+    campus: str = Field(default="", description="校区")
+    capacity: int = Field(default=0, description="容量")
+    state: int = Field(default=0, description="状态")
+
+
+class TimeSlotInfo(BaseModel):
+    """场馆时间段模型 — 单个可预约时段。
+
+    Attributes:
+        slot_id: 时段唯一标识 (GraphQL resourcesTimeSlot.id)。
+        start_time: 开始时间 (HH:MM)。
+        end_time: 结束时间 (HH:MM)。
+        available: 可预约数量 (0=已满)。
+        status_text: 状态描述 (如 "已满" / "可预约")。
+        venue_id: 所属场馆 ID。
+        date: 日期 (YYYY-MM-DD)。
+    """
+
+    slot_id: str = Field(..., description="时段唯一标识")
+    start_time: str = Field(..., description="开始时间 (HH:MM)")
+    end_time: str = Field(..., description="结束时间 (HH:MM)")
+    available: int = Field(default=0, description="可预约数量")
+    status_text: str = Field(default="", description="状态描述")
+    venue_id: str = Field(default="", description="所属场馆 ID")
+    date: str = Field(default="", description="日期 (YYYY-MM-DD)")
+
+
+class BookingInfo(BaseModel):
+    """预约信息模型 — 已提交的预约记录。
+
+    Attributes:
+        booking_id: 预约唯一标识。
+        venue_name: 场馆名称。
+        venue_type: 场馆类型。
+        date: 预约日期 (YYYY-MM-DD)。
+        start_time: 开始时间 (HH:MM)。
+        end_time: 结束时间 (HH:MM)。
+        state: 预约状态 (0=待审核, 1=已通过, ...)。
+        event: 活动名称。
+    """
+
+    booking_id: str = Field(..., description="预约唯一标识")
+    venue_name: str = Field(default="", description="场馆名称")
+    venue_type: str = Field(default="", description="场馆类型")
+    date: str = Field(default="", description="预约日期")
+    start_time: str = Field(default="", description="开始时间")
+    end_time: str = Field(default="", description="结束时间")
+    state: int = Field(default=0, description="预约状态")
+    event: str = Field(default="", description="活动名称")

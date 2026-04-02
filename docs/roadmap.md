@@ -162,6 +162,18 @@ extract:
 - [x] 支持 DeepSeek / OpenAI 兼容接口，通过环境变量配置
 - [x] 自动加载 Tool Schema → LLM 调用 → 执行 CLI → 返回结果 → LLM 回答
 
+### 场馆预约系统 (Venue Booking)
+
+- [x] 逆向 `dndxyyg.seu.edu.cn` 预约系统 API (OIDC + GraphQL)
+- [x] 实现 OIDC 认证流程 (CAS → SSO → OIDC implicit flow → Bearer token)
+- [x] 发现并映射 GraphQL Schema (279 queries + 290 mutations)
+- [x] 实现 `VenueAdapter` 适配器 (`cli_campus/adapters/venue_adapter.py`)
+- [x] 新增领域模型: `VenueInfo`, `TimeSlotInfo`, `BookingInfo`
+- [x] 实现 CLI 命令: `campus venue list/slots/book/cancel/my`
+- [x] 支持 4 校区 28 个羽毛球场 + 网球场/篮球馆/乒乓球台/游泳馆/健身房
+- [x] 编写交互式 AI 预约助手 (`scripts/venue_assistant.py`)
+- [x] 25 项单元测试 + 真实网络集成测试通过
+
 ---
 
 ## 阶段四：生态繁荣与多校共建 (Phase 4: Open Ecosystem) — Month 3+

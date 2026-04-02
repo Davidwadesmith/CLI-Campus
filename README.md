@@ -47,6 +47,20 @@ campus schema export --commands bus   # 仅导出指定命令
 # SOP 宏指令 (原子工具编排)
 campus sop list                      # 列出可用 SOP
 campus sop run morning_briefing      # 执行早间速报 (课表 + 校车)
+
+# 场馆预约 (羽毛球场 / 网球场 / 篮球馆 / 乒乓球台 ...)
+campus venue list                    # 列出羽毛球场馆
+campus venue list -t 网球场          # 列出网球场
+campus venue list -c 九龙湖          # 按校区筛选
+campus venue slots                   # 查看明天羽毛球场时段
+campus venue slots -d 2025-07-15     # 指定日期
+campus venue slots -v JLH01          # 指定场馆
+campus venue book -v JLH01 -s 14:00 -e 15:00  # 预约
+campus venue my                      # 查看我的预约
+campus venue cancel <booking_id>     # 取消预约
+
+# 场馆预约 AI 助手 (交互式对话)
+python scripts/venue_assistant.py    # 启动 AI 助手
 ```
 
 ## 项目结构
@@ -72,13 +86,14 @@ cli-campus/
 │   │   ├── course_adapter.py# 课程表适配器 (ehall/wdkb)
 │   │   ├── grade_adapter.py # 成绩查询适配器 (ehall/cjcx)
 │   │   ├── exam_adapter.py  # 考试安排适配器 (ehall/wdksap)
-│   │   └── bus_adapter.py   # 校车时刻表静态适配器
+│   │   ├── bus_adapter.py   # 校车时刻表静态适配器
+│   │   └── venue_adapter.py # 场馆预约适配器 (OIDC + GraphQL)
 │   └── data/
 │       └── bus_schedule.json# 校车时刻表数据 (总务处官方)
 ├── configs/declarative/     # YAML 声明式适配器配置
 ├── sops/                    # SOP 宏指令配置
 ├── scripts/                 # 工具脚本 (M2M 联调测试等)
-├── tests/                   # 单元测试 (211 tests)
+├── tests/                   # 单元测试 (236 tests)
 ├── docs/                    # 项目文档
 └── pyproject.toml           # 项目配置
 ```
