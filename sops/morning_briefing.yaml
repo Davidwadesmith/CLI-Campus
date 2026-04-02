@@ -1,0 +1,36 @@
+# 早间速报 — 每天早上推送今日课表 + 校车时间
+# 本 SOP 串联两个原子命令，渲染为 Markdown 摘要
+
+name: morning_briefing
+display_name: "早间速报"
+description: "每天早上推送今日课表 + 最近校车"
+
+steps:
+  - id: get_courses
+    command: campus course
+    description: "获取本学期课表"
+
+  - id: get_bus
+    command: campus bus --route 循环
+    description: "获取循环巴士时刻"
+
+output:
+  format: markdown
+  template: |
+    ## {{ date }} 早间速报
+
+    ### 本学期课程 (共 {{ steps.get_courses.count }} 门)
+    {% for c in steps.get_courses.result %}
+    - {{ c.get("title", "N/A") }}
+    {% endfor %}
+    {% if not steps.get_courses.result %}
+    _暂无课程数据（请确认已登录: campus auth login）_
+    {% endif %}
+
+    ### 循环巴士时刻 ({{ steps.get_bus.count }} 班)
+    {% for b in steps.get_bus.result[:10] %}
+    - {{ b.get("title", "") }}
+    {% endfor %}
+    {% if not steps.get_bus.result %}
+    _暂无校车数据_
+    {% endif %}

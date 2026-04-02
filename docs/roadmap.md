@@ -149,8 +149,12 @@ extract:
 
 ### SOP 宏执行器
 
-- [ ] 实现预设任务流 YAML 解析器
-- [ ] 支持串联原子工具（如：先查课表，再发微信通知）
+- [x] 实现预设任务流 YAML 解析器（`cli_campus/core/sop_engine.py`）
+- [x] 支持串联原子工具（通过 subprocess 调用 CLI 命令获取 JSON 结果）
+- [x] 支持 Jinja2 模板渲染 Markdown 输出
+- [x] 实现 `campus sop list` / `campus sop run <name>` 命令
+- [x] 创建 `sops/morning_briefing.yaml` 示例 SOP（课表 + 校车）
+- [x] 15 项单元测试全部通过
 
 ### M2M 联调测试
 

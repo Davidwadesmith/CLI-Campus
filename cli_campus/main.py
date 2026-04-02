@@ -964,6 +964,92 @@ def schema_export(
 
 
 # ---------------------------------------------------------------------------
+# SOP 子命令组 (Phase 3: 宏执行器)
+# ---------------------------------------------------------------------------
+
+_DEFAULT_SOP_DIR = Path(__file__).resolve().parent.parent / "sops"
+
+sop_app = typer.Typer(
+    name="sop",
+    help="SOP 宏指令 — 预设任务流串联原子工具。",
+    no_args_is_help=True,
+)
+app.add_typer(sop_app, name="sop")
+
+
+@sop_app.command("list")
+def sop_list() -> None:
+    """列出所有可用的 SOP 宏指令。"""
+    from cli_campus.core.sop_engine import discover_sops
+
+    sops = discover_sops(_DEFAULT_SOP_DIR)
+
+    if _json_output:
+        payload = [
+            {"name": s.name, "display_name": s.display_name, "description": s.description}
+            for s in sops
+        ]
+        typer.echo(json.dumps(payload, ensure_ascii=False))
+        return
+
+    if not sops:
+        console.print("[dim]暂无可用的 SOP 宏指令。[/dim]")
+        console.print(f"  SOP 目录: {_DEFAULT_SOP_DIR}")
+        return
+
+    table = Table(title="📋 SOP 宏指令", show_header=True, header_style="bold cyan")
+    table.add_column("名称", style="bold")
+    table.add_column("显示名", min_width=12)
+    table.add_column("描述", min_width=20)
+
+    for s in sops:
+        table.add_row(s.name, s.display_name, s.description)
+
+    console.print(table)
+
+
+@sop_app.command("run")
+def sop_run(
+    name: str = typer.Argument(help="SOP 宏指令名称（sops/ 下的文件名，不含 .yaml 后缀）。"),
+) -> None:
+    """执行 SOP 宏指令 — 顺序运行预设步骤并渲染输出。"""
+    from cli_campus.core.sop_engine import SOPRunner, load_sop
+
+    sop_path = _DEFAULT_SOP_DIR / f"{name}.yaml"
+    if not sop_path.exists():
+        sop_path = _DEFAULT_SOP_DIR / f"{name}.yml"
+    if not sop_path.exists():
+        if _json_output:
+            typer.echo(json.dumps({"error": "not_found", "message": f"未找到 SOP: {name}"}))
+        else:
+            console.print(f"[red]✗[/red] 未找到 SOP: [bold]{name}[/bold]")
+            console.print(f"  SOP 目录: {_DEFAULT_SOP_DIR}")
+        raise typer.Exit(code=1)
+
+    try:
+        sop = load_sop(sop_path)
+    except Exception as exc:
+        if _json_output:
+            typer.echo(json.dumps({"error": "config_error", "message": str(exc)}))
+        else:
+            console.print(f"[red]✗[/red] SOP 配置加载失败: {exc}")
+        raise typer.Exit(code=1)
+
+    if not _json_output:
+        console.print(f"[dim]正在执行 SOP: {sop.display_name or sop.name}...[/dim]")
+
+    runner = SOPRunner(sop)
+
+    if _json_output:
+        result = runner.execute_json()
+        typer.echo(json.dumps(result, ensure_ascii=False))
+    else:
+        output = runner.execute()
+        # Markdown 输出直接打印
+        console.print(output)
+
+
+# ---------------------------------------------------------------------------
 # 入口点
 # ---------------------------------------------------------------------------
 
