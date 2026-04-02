@@ -42,6 +42,7 @@ class AdapterSource(str, Enum):
     CHAOXING = "chaoxing"
     YUKETANG = "yuketang"
     STATIC_JSON = "static_json"
+    DECLARATIVE = "declarative"
     MOCK = "mock"
 
 

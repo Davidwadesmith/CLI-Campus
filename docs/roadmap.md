@@ -91,9 +91,12 @@ $ campus bus --route 循环 --type workday
 
 ### YAML 声明式解析引擎
 
-- [ ] 编写读取 `.yaml` 配置并自动生成标准 HTTP 请求的引擎
-- [ ] 集成 `JSONPath` 和基础正则
-- [ ] 验证能否仅靠写 YAML 就把信息门户的通知公告爬下来
+- [x] 编写读取 `.yaml` 配置并自动生成标准 HTTP 请求的引擎（`cli_campus/core/yaml_engine.py`）
+- [x] 集成 `JSONPath`（jsonpath-ng）、CSS 选择器（BeautifulSoup）和正则表达式三种抽取模式
+- [x] 验证能否仅靠写 YAML 就把信息门户的通知公告爬下来 → `configs/declarative/seu_jwc_news.yaml` 成功抓取教务处通知
+- [x] 实现 `campus fetch <name>` 运行声明式适配器
+- [x] 实现 `campus fetch-list` 列出所有可用配置
+- [x] 24 项单元测试全部通过
 
 ```yaml
 # 示例 YAML 配置

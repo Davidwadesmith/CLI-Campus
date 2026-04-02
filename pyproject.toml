@@ -11,6 +11,10 @@ dependencies = [
     "keyring>=24.0.0",
     "httpx>=0.28.0",
     "seu-auth @ git+https://github.com/Golevka2001/SEU-Auth.git@0.1.0",
+    "pyyaml>=6.0",
+    "jsonpath-ng>=1.6.0",
+    "beautifulsoup4>=4.12.0",
+    "jinja2>=3.1.0",
 ]
 
 [project.scripts]

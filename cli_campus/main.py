@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from pathlib import Path
 from typing import Optional
 
 import typer
@@ -820,6 +821,111 @@ def _render_exams(events: list[CampusEvent], semester_code: str) -> None:
             c.get("location", ""),
             c.get("seat_number", ""),
             f"{c.get('credit', 0):.0f}" if c.get("credit") else "",
+        )
+
+    console.print(table)
+
+
+# ---------------------------------------------------------------------------
+# Fetch 命令 (YAML 声明式适配器)
+# ---------------------------------------------------------------------------
+
+_DEFAULT_CONFIG_DIR = Path(__file__).resolve().parent.parent / "configs" / "declarative"
+
+
+@app.command("fetch")
+def fetch(
+    name: str = typer.Argument(help="YAML 声明式适配器名称（configs/declarative/ 下的文件名，不含 .yaml 后缀）。"),
+) -> None:
+    """运行 YAML 声明式适配器 — 根据 YAML 配置自动获取并解析数据。"""
+    from cli_campus.core.yaml_engine import DeclarativeAdapter, load_yaml_config
+
+    yaml_path = _DEFAULT_CONFIG_DIR / f"{name}.yaml"
+    if not yaml_path.exists():
+        yaml_path = _DEFAULT_CONFIG_DIR / f"{name}.yml"
+    if not yaml_path.exists():
+        if _json_output:
+            typer.echo(json.dumps({"error": "not_found", "message": f"未找到配置: {name}"}))
+        else:
+            console.print(f"[red]✗[/red] 未找到声明式配置: [bold]{name}[/bold]")
+            console.print(f"  配置目录: {_DEFAULT_CONFIG_DIR}")
+        raise typer.Exit(code=1)
+
+    try:
+        yaml_config = load_yaml_config(yaml_path)
+    except Exception as exc:
+        if _json_output:
+            typer.echo(json.dumps({"error": "config_error", "message": str(exc)}))
+        else:
+            console.print(f"[red]✗[/red] 配置加载失败: {exc}")
+        raise typer.Exit(code=1)
+
+    adapter = DeclarativeAdapter(yaml_config)
+
+    try:
+        events = asyncio.run(adapter.fetch())
+    except AdapterError as exc:
+        _handle_adapter_error(exc)
+
+    if _json_output:
+        _output_events(events)
+        return
+
+    if not events:
+        console.print("[dim]暂无数据。[/dim]")
+        return
+
+    # 使用通用 news 表格渲染
+    _render_declarative_events(events, yaml_config.display_name or yaml_config.name)
+
+
+@app.command("fetch-list")
+def fetch_list() -> None:
+    """列出所有可用的 YAML 声明式适配器。"""
+    from cli_campus.core.yaml_engine import discover_yaml_configs
+
+    configs = discover_yaml_configs(_DEFAULT_CONFIG_DIR)
+
+    if _json_output:
+        payload = [{"name": c.name, "display_name": c.display_name, "category": c.category} for c in configs]
+        typer.echo(json.dumps(payload, ensure_ascii=False))
+        return
+
+    if not configs:
+        console.print("[dim]暂无声明式适配器配置。[/dim]")
+        console.print(f"  配置目录: {_DEFAULT_CONFIG_DIR}")
+        return
+
+    table = Table(title="📋 声明式适配器", show_header=True, header_style="bold cyan")
+    table.add_column("名称", style="bold")
+    table.add_column("显示名", min_width=12)
+    table.add_column("类别", justify="center")
+
+    for c in configs:
+        table.add_row(c.name, c.display_name, c.category)
+
+    console.print(table)
+
+
+def _render_declarative_events(events: list[CampusEvent], title: str) -> None:
+    """渲染声明式适配器返回的事件表格。"""
+    table = Table(
+        title=f"📰 {title}",
+        show_header=True,
+        header_style="bold cyan",
+        show_lines=False,
+        pad_edge=True,
+    )
+    table.add_column("标题", style="bold", min_width=20, max_width=50)
+    table.add_column("日期", justify="center", min_width=10)
+    table.add_column("链接", style="dim", max_width=30)
+
+    for event in events:
+        c = event.content
+        table.add_row(
+            c.get("title", event.title)[:50],
+            c.get("date", ""),
+            c.get("url", "")[:30],
         )
 
     console.print(table)

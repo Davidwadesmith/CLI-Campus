@@ -1,0 +1,29 @@
+# SEU 教务处 — 教务信息通知
+# 数据来源: https://jwc.seu.edu.cn/jwxx/list.htm (公开页面，无需认证)
+# 选择器验证于 2026-04-02
+
+name: seu_jwc_news
+display_name: "教务处通知"
+category: news
+source: static_json
+
+request:
+  url: "https://jwc.seu.edu.cn/jwxx/list.htm"
+  method: GET
+  headers:
+    User-Agent: "CLI-Campus/0.1"
+  timeout: 10
+
+extract:
+  type: html
+  selector: "#wp_news_w8 table.main tr"
+  mapping:
+    title:
+      selector: "a"
+      attr: "text"
+    url:
+      selector: "a"
+      attr: "href"
+    date:
+      selector: "div.main"
+      attr: "text"
