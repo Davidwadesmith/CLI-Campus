@@ -932,6 +932,38 @@ def _render_declarative_events(events: list[CampusEvent], title: str) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Schema 子命令组 (Phase 3: Agent-Native)
+# ---------------------------------------------------------------------------
+
+schema_app = typer.Typer(
+    name="schema",
+    help="Tool Schema 管理 — 导出 Function Calling JSON Schema。",
+    no_args_is_help=True,
+)
+app.add_typer(schema_app, name="schema")
+
+
+@schema_app.command("export")
+def schema_export(
+    pretty: bool = typer.Option(False, "--pretty", "-p", help="美化 JSON 输出。"),
+    commands_filter: Optional[str] = typer.Option(
+        None,
+        "--commands",
+        "-c",
+        help="仅导出指定命令（逗号分隔，如 bus,course）。",
+    ),
+) -> None:
+    """导出所有 CLI 命令的 Function Calling JSON Schema（OpenAI 标准）。"""
+    from cli_campus.core.schema_export import export_function_calling_schema
+
+    cmd_list = commands_filter.split(",") if commands_filter else None
+    tools = export_function_calling_schema(app, commands=cmd_list)
+
+    indent = 2 if pretty else None
+    typer.echo(json.dumps(tools, ensure_ascii=False, indent=indent))
+
+
+# ---------------------------------------------------------------------------
 # 入口点
 # ---------------------------------------------------------------------------
 

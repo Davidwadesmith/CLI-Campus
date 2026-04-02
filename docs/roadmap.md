@@ -126,9 +126,11 @@ extract:
 
 ### Tool Schema 自动生成器
 
-- [ ] 实现 `campus schema export` 命令
-- [ ] 利用反射遍历所有 Typer 命令和 Pydantic 模型
-- [ ] 自动生成 OpenAI / DeepSeek Function Calling 标准的 JSON Schema
+- [x] 实现 `campus schema export` 命令（`cli_campus/core/schema_export.py`）
+- [x] 利用 Typer/Click 反射遍历所有命令及参数类型
+- [x] 自动生成 OpenAI / DeepSeek Function Calling 标准的 JSON Schema
+- [x] 支持 `--pretty` 美化输出和 `--commands` 过滤
+- [x] 12 项单元测试全部通过
 
 ```json
 {
