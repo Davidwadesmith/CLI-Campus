@@ -835,7 +835,10 @@ _DEFAULT_CONFIG_DIR = Path(__file__).resolve().parent.parent / "configs" / "decl
 
 @app.command("fetch")
 def fetch(
-    name: str = typer.Argument(help="YAML 声明式适配器名称（configs/declarative/ 下的文件名，不含 .yaml 后缀）。"),
+    name: str = typer.Argument(
+        help="YAML 声明式适配器名称"
+        "（configs/declarative/ 下的文件名，不含 .yaml 后缀）。",
+    ),
 ) -> None:
     """运行 YAML 声明式适配器 — 根据 YAML 配置自动获取并解析数据。"""
     from cli_campus.core.yaml_engine import DeclarativeAdapter, load_yaml_config
@@ -845,7 +848,10 @@ def fetch(
         yaml_path = _DEFAULT_CONFIG_DIR / f"{name}.yml"
     if not yaml_path.exists():
         if _json_output:
-            typer.echo(json.dumps({"error": "not_found", "message": f"未找到配置: {name}"}))
+            typer.echo(json.dumps({
+                "error": "not_found",
+                "message": f"未找到配置: {name}",
+            }))
         else:
             console.print(f"[red]✗[/red] 未找到声明式配置: [bold]{name}[/bold]")
             console.print(f"  配置目录: {_DEFAULT_CONFIG_DIR}")
@@ -887,7 +893,14 @@ def fetch_list() -> None:
     configs = discover_yaml_configs(_DEFAULT_CONFIG_DIR)
 
     if _json_output:
-        payload = [{"name": c.name, "display_name": c.display_name, "category": c.category} for c in configs]
+        payload = [
+            {
+                "name": c.name,
+                "display_name": c.display_name,
+                "category": c.category,
+            }
+            for c in configs
+        ]
         typer.echo(json.dumps(payload, ensure_ascii=False))
         return
 
@@ -986,7 +999,11 @@ def sop_list() -> None:
 
     if _json_output:
         payload = [
-            {"name": s.name, "display_name": s.display_name, "description": s.description}
+            {
+                "name": s.name,
+                "display_name": s.display_name,
+                "description": s.description,
+            }
             for s in sops
         ]
         typer.echo(json.dumps(payload, ensure_ascii=False))
@@ -1010,7 +1027,10 @@ def sop_list() -> None:
 
 @sop_app.command("run")
 def sop_run(
-    name: str = typer.Argument(help="SOP 宏指令名称（sops/ 下的文件名，不含 .yaml 后缀）。"),
+    name: str = typer.Argument(
+        help="SOP 宏指令名称"
+        "（sops/ 下的文件名，不含 .yaml 后缀）。",
+    ),
 ) -> None:
     """执行 SOP 宏指令 — 顺序运行预设步骤并渲染输出。"""
     from cli_campus.core.sop_engine import SOPRunner, load_sop
@@ -1020,7 +1040,10 @@ def sop_run(
         sop_path = _DEFAULT_SOP_DIR / f"{name}.yml"
     if not sop_path.exists():
         if _json_output:
-            typer.echo(json.dumps({"error": "not_found", "message": f"未找到 SOP: {name}"}))
+            typer.echo(json.dumps({
+                "error": "not_found",
+                "message": f"未找到 SOP: {name}",
+            }))
         else:
             console.print(f"[red]✗[/red] 未找到 SOP: [bold]{name}[/bold]")
             console.print(f"  SOP 目录: {_DEFAULT_SOP_DIR}")

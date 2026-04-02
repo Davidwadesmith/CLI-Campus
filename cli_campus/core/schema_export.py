@@ -6,7 +6,6 @@ OpenAI / DeepSeek Function Calling 标准的 JSON Schema。
 
 from __future__ import annotations
 
-import json
 from typing import Any
 
 import click

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import tempfile
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
@@ -19,7 +18,6 @@ from cli_campus.core.yaml_engine import (
     discover_yaml_configs,
     load_yaml_config,
 )
-
 
 # ---------------------------------------------------------------------------
 # 配置加载测试
@@ -92,8 +90,13 @@ class TestDiscoverConfigs:
 
     def test_discover_yaml_files(self, tmp_path: Path) -> None:
         for name in ["a.yaml", "b.yaml"]:
+            content = (
+                f"name: {name.split('.')[0]}\n"
+                "request:\n  url: https://example.com\n"
+                "extract:\n  type: json\n"
+            )
             (tmp_path / name).write_text(
-                f"name: {name.split('.')[0]}\nrequest:\n  url: https://example.com\nextract:\n  type: json\n",
+                content,
                 encoding="utf-8",
             )
 
@@ -145,7 +148,10 @@ class TestJsonExtractor:
 
     def test_extract_single_object(self) -> None:
         response = json.dumps({"title": "单条", "count": 42})
-        config = ExtractConfig(type="json", mapping={"title": "$.title", "count": "$.count"})
+        config = ExtractConfig(
+            type="json",
+            mapping={"title": "$.title", "count": "$.count"},
+        )
         items = _extract_json(response, config)
         assert len(items) == 1
         assert items[0]["title"] == "单条"
@@ -215,10 +221,15 @@ class TestRegexExtractor:
     """正则表达式抽取器测试。"""
 
     def test_extract_simple_pattern(self) -> None:
-        text = '<td class="event">2026-01-01</td><td>期末考试</td>\n<td class="event">2026-06-15</td><td>暑假开始</td>'
+        text = (
+            '<td class="event">2026-01-01</td><td>期末考试</td>\n'
+            '<td class="event">2026-06-15</td><td>暑假开始</td>'
+        )
         config = ExtractConfig(
             type="regex",
-            pattern=r'<td class="event">(?P<date>\d{4}-\d{2}-\d{2})</td><td>(?P<title>.*?)</td>',
+            pattern=r'<td class="event">'
+            r"(?P<date>\d{4}-\d{2}-\d{2})</td>"
+            r"<td>(?P<title>.*?)</td>",
         )
         items = _extract_regex(text, config)
         assert len(items) == 2
@@ -349,6 +360,7 @@ class TestFetchCLI:
 
     def test_fetch_list(self) -> None:
         from typer.testing import CliRunner
+
         from cli_campus.main import app
 
         runner = CliRunner()
@@ -357,6 +369,7 @@ class TestFetchCLI:
 
     def test_fetch_list_json(self) -> None:
         from typer.testing import CliRunner
+
         from cli_campus.main import app
 
         runner = CliRunner()
@@ -367,6 +380,7 @@ class TestFetchCLI:
 
     def test_fetch_nonexistent(self) -> None:
         from typer.testing import CliRunner
+
         from cli_campus.main import app
 
         runner = CliRunner()

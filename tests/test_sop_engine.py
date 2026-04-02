@@ -80,8 +80,12 @@ class TestDiscoverSOPs:
 
     def test_discover_sops(self, tmp_path: Path) -> None:
         for name in ["a.yaml", "b.yaml"]:
+            content = (
+                f"name: {name.split('.')[0]}\n"
+                "steps:\n  - id: s1\n    command: campus version\n"
+            )
             (tmp_path / name).write_text(
-                f"name: {name.split('.')[0]}\nsteps:\n  - id: s1\n    command: campus version\n",
+                content,
                 encoding="utf-8",
             )
         sops = discover_sops(tmp_path)

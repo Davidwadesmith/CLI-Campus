@@ -18,7 +18,6 @@ from pydantic import BaseModel, Field
 
 from cli_campus.core.exceptions import AdapterError
 
-
 # ---------------------------------------------------------------------------
 # 配置模型
 # ---------------------------------------------------------------------------
@@ -150,7 +149,10 @@ class SOPRunner:
         if result.returncode != 0:
             # 返回错误信息但不中断 SOP
             stderr = result.stderr.strip()[:200] if result.stderr else ""
-            return [{"error": f"命令执行失败 (exit={result.returncode})", "stderr": stderr}]
+            return [{
+                "error": f"命令执行失败 (exit={result.returncode})",
+                "stderr": stderr,
+            }]
 
         # 解析 JSON 输出
         stdout = result.stdout.strip()

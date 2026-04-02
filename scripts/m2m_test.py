@@ -79,7 +79,10 @@ def run_campus_command(func_name: str, arguments: dict) -> str:
         timeout=30,
         cwd=str(project_root),
     )
-    return result.stdout.strip() if result.stdout else f"(exit={result.returncode}) {result.stderr.strip()[:200]}"
+    if result.stdout:
+        return result.stdout.strip()
+    stderr = result.stderr.strip()[:200] if result.stderr else ""
+    return f"(exit={result.returncode}) {stderr}"
 
 
 # ---------------------------------------------------------------------------
@@ -128,7 +131,8 @@ def main() -> None:
         messages=[
             {
                 "role": "system",
-                "content": "你是东南大学的校园助手。使用提供的工具回答问题。回答简洁明了。",
+                "content": "你是东南大学的校园助手。"
+                "使用提供的工具回答问题。回答简洁明了。",
             },
             {"role": "user", "content": user_message},
         ],
@@ -160,7 +164,8 @@ def main() -> None:
             messages=[
                 {
                     "role": "system",
-                    "content": "你是东南大学的校园助手。使用提供的工具回答问题。回答简洁明了。",
+                    "content": "你是东南大学的校园助手。"
+                    "使用提供的工具回答问题。回答简洁明了。",
                 },
                 {"role": "user", "content": user_message},
                 message,

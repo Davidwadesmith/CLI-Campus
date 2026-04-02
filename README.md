@@ -109,6 +109,26 @@ pytest -v
 ruff format .
 ```
 
+## 致谢 · 开源依赖
+
+CLI-Campus 站在以下优秀开源项目的肩膀上：
+
+| 项目 | 用途 |
+|------|------|
+| [Typer](https://github.com/fastapi/typer) | CLI 框架，提供类型安全的命令行参数解析 |
+| [Pydantic](https://github.com/pydantic/pydantic) | 数据验证与序列化（v2） |
+| [Rich](https://github.com/Textualize/rich) | 终端富文本渲染（表格、颜色、进度条） |
+| [httpx](https://github.com/encode/httpx) | 异步 HTTP 客户端 |
+| [keyring](https://github.com/jaraco/keyring) | 跨平台系统密钥管理器集成 |
+| [SEU-Auth](https://github.com/Golevka2001/SEU-Auth) | 东南大学 CAS 统一身份认证 SDK |
+| [PyYAML](https://github.com/yaml/pyyaml) | YAML 解析 |
+| [jsonpath-ng](https://github.com/h2non/jsonpath-ng) | JSONPath 表达式引擎 |
+| [Beautiful Soup](https://www.crummy.com/software/BeautifulSoup/) | HTML 解析与数据提取 |
+| [Jinja2](https://github.com/pallets/jinja) | 模板引擎（SOP 输出渲染） |
+| [OpenAI Python](https://github.com/openai/openai-python) | LLM Function Calling 集成 |
+
+开发工具链：[Ruff](https://github.com/astral-sh/ruff)（Lint + Format）· [pytest](https://github.com/pytest-dev/pytest) · [Mypy](https://github.com/python/mypy) · [uv](https://github.com/astral-sh/uv)（包管理）
+
 ## License
 
 MIT

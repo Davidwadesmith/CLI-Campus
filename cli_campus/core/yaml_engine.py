@@ -147,7 +147,10 @@ def _extract_json(response_text: str, config: ExtractConfig) -> list[dict[str, A
                     row[field_name] = item
             else:
                 # 直接作为 key 访问
-                row[field_name] = item.get(jsonpath_expr, "") if isinstance(item, dict) else ""
+                if isinstance(item, dict):
+                    row[field_name] = item.get(jsonpath_expr, "")
+                else:
+                    row[field_name] = ""
         results.append(row)
 
     return results
