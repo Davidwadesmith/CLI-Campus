@@ -152,20 +152,26 @@ cli-campus/
 │   │   ├── interfaces.py       # BaseCampusAdapter 抽象基类
 │   │   ├── config.py           # 配置加载与管理
 │   │   ├── auth.py             # 凭证管理 (keyring)
-│   │   └── exceptions.py       # 统一异常层级
-│   └── adapters/               # 适配器层（脏活累活都在这）
-│       ├── __init__.py
-│       ├── mock_adapter.py     # Mock 适配器（调试 / CI 用）
-│       ├── seu_auth_wrapper.py # SEU-Auth SDK 封装层
-│       ├── ehall_base.py       # ehall 教务应用基座（三阶段 CAS 认证）
-│       ├── card_adapter.py     # 一卡通适配器
-│       ├── course_adapter.py   # 课程表适配器 (ehall/wdkb)
-│       ├── grade_adapter.py    # 成绩查询适配器 (ehall/cjcx)
-│       ├── exam_adapter.py     # 考试安排适配器 (ehall/studentWdksapApp)
-│       └── bus_adapter.py      # 校车时刻表静态适配器 (总务处/JSON)
+│   │   ├── exceptions.py       # 统一异常层级
+│   │   ├── yaml_engine.py      # YAML 声明式解析引擎
+│   │   ├── schema_export.py    # Tool Schema 自动生成器
+│   │   └── sop_engine.py       # SOP 宏执行器
+│   ├── adapters/               # 适配器层（脏活累活都在这）
+│   │   ├── __init__.py
+│   │   ├── mock_adapter.py     # Mock 适配器（调试 / CI 用）
+│   │   ├── seu_auth_wrapper.py # SEU-Auth SDK 封装层
+│   │   ├── ehall_base.py       # ehall 教务应用基座（三阶段 CAS 认证）
+│   │   ├── card_adapter.py     # 一卡通适配器
+│   │   ├── course_adapter.py   # 课程表适配器 (ehall/wdkb)
+│   │   ├── grade_adapter.py    # 成绩查询适配器 (ehall/cjcx)
+│   │   ├── exam_adapter.py     # 考试安排适配器 (ehall/studentWdksapApp)
+│   │   └── bus_adapter.py      # 校车时刻表静态适配器 (总务处/JSON)
 │   └── data/
 │       └── bus_schedule.json   # 校车时刻表数据 (总务处官方)
-├── tests/                      # pytest 测试 (160 tests)
+├── configs/declarative/        # YAML 声明式适配器配置
+├── sops/                       # SOP 宏指令配置 (Jinja2 模板)
+├── scripts/                    # 工具脚本 (M2M 联调测试等)
+├── tests/                      # pytest 测试 (211 tests)
 │   ├── test_models.py          # 模型测试
 │   ├── test_adapters.py        # 适配器测试
 │   ├── test_cli.py             # CLI 命令测试
@@ -175,6 +181,9 @@ cli-campus/
 │   ├── test_grade_adapter.py   # 成绩查询适配器测试
 │   ├── test_exam_adapter.py    # 考试安排适配器测试
 │   ├── test_bus_adapter.py     # 校车适配器测试 (30 tests)
+│   ├── test_yaml_engine.py     # YAML 引擎测试 (24 tests)
+│   ├── test_schema_export.py   # Schema 导出测试 (12 tests)
+│   ├── test_sop_engine.py      # SOP 执行器测试 (15 tests)
 │   └── test_auth*.py           # 认证相关测试
 ├── docs/                       # 项目文档
 ├── .github/
@@ -188,7 +197,7 @@ cli-campus/
 
 | 目录 | 允许 | 禁止 |
 |------|------|------|
-| `core/` | Pydantic 模型、抽象基类、配置 | 任何 HTTP 请求、HTML 解析 |
+| `core/` | Pydantic 模型、抽象基类、配置、引擎 | 具体学校逻辑、Rich 渲染 |
 | `adapters/` | 网络请求、数据清洗、Session 管理 | Rich 渲染逻辑、CLI 参数解析 |
 | `main.py` | Typer 命令定义、调用 Adapter、输出格式化 | 直接发起网络请求 |
 | `tests/` | pytest 测试用例 | 生产代码 |

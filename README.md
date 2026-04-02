@@ -35,6 +35,18 @@ campus auth status         # 检查登录状态
 campus course              # Rich 表格输出
 campus --json course       # JSON 输出（供 Agent 使用）
 campus course -s 2024-2025-1  # 指定学期
+
+# 声明式适配器 (YAML 驱动，无需写 Python)
+campus fetch-list          # 列出可用配置
+campus fetch seu_jwc_news  # 运行教务处通知抓取
+
+# Tool Schema 导出 (Agent-Native)
+campus schema export --pretty        # 导出 Function Calling JSON Schema
+campus schema export --commands bus   # 仅导出指定命令
+
+# SOP 宏指令 (原子工具编排)
+campus sop list                      # 列出可用 SOP
+campus sop run morning_briefing      # 执行早间速报 (课表 + 校车)
 ```
 
 ## 项目结构
@@ -48,13 +60,25 @@ cli-campus/
 │   │   ├── interfaces.py    # Adapter 抽象基类
 │   │   ├── config.py        # 配置管理
 │   │   ├── auth.py          # 凭证管理 (keyring)
-│   │   └── exceptions.py    # 统一异常层级
-│   └── adapters/            # 适配器层
-│       ├── mock_adapter.py  # Mock 适配器
-│       ├── seu_auth_wrapper.py  # SEU-Auth SDK 封装
-│       ├── card_adapter.py  # 一卡通适配器
-│       └── course_adapter.py# 课程表适配器
-├── tests/                   # 单元测试 (80 tests)
+│   │   ├── exceptions.py    # 统一异常层级
+│   │   ├── yaml_engine.py   # YAML 声明式解析引擎
+│   │   ├── schema_export.py # Tool Schema 自动生成器
+│   │   └── sop_engine.py    # SOP 宏执行器
+│   ├── adapters/            # 适配器层
+│   │   ├── mock_adapter.py  # Mock 适配器
+│   │   ├── seu_auth_wrapper.py  # SEU-Auth SDK 封装
+│   │   ├── ehall_base.py    # ehall 三阶段认证基座
+│   │   ├── card_adapter.py  # 一卡通适配器
+│   │   ├── course_adapter.py# 课程表适配器 (ehall/wdkb)
+│   │   ├── grade_adapter.py # 成绩查询适配器 (ehall/cjcx)
+│   │   ├── exam_adapter.py  # 考试安排适配器 (ehall/wdksap)
+│   │   └── bus_adapter.py   # 校车时刻表静态适配器
+│   └── data/
+│       └── bus_schedule.json# 校车时刻表数据 (总务处官方)
+├── configs/declarative/     # YAML 声明式适配器配置
+├── sops/                    # SOP 宏指令配置
+├── scripts/                 # 工具脚本 (M2M 联调测试等)
+├── tests/                   # 单元测试 (211 tests)
 ├── docs/                    # 项目文档
 └── pyproject.toml           # 项目配置
 ```
