@@ -67,8 +67,10 @@ class TestMockAdapter:
         event = events[0]
         assert event.source == AdapterSource.MOCK
         assert event.category == EventCategory.COURSE
-        assert "course_id" in event.content
+        assert "name" in event.content
         assert event.content["name"] == "高等数学 A"
+        assert event.content["day_of_week"] == 1
+        assert event.content["periods"] == "1-2"
 
     def test_mock_adapter_name(self) -> None:
         adapter = MockAdapter(config={})

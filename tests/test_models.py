@@ -65,38 +65,34 @@ class TestCourseInfo:
 
     def test_create_course(self) -> None:
         course = CourseInfo(
-            course_id="B0900020S",
-            name="高等数学 A",
-            teacher="张三",
-            location="九龙湖教三-302",
-            weekday=1,
-            start_period=1,
-            end_period=2,
-            weeks=[1, 2, 3, 4, 5],
+            name="算法设计与分析",
+            teacher="方效林",
+            location="教四-103",
+            day_of_week=3,
+            periods="3-4",
+            weeks="1-8周",
+            raw_schedule_info="1-8周 星期三 3-4节 教四-103",
         )
-        assert course.course_id == "B0900020S"
-        assert course.weekday == 1
-        assert len(course.weeks) == 5
+        assert course.name == "算法设计与分析"
+        assert course.day_of_week == 3
+        assert course.periods == "3-4"
+        assert course.weeks == "1-8周"
 
-    def test_course_weekday_validation(self) -> None:
+    def test_course_day_of_week_validation(self) -> None:
         import pytest
 
         with pytest.raises(Exception):
             CourseInfo(
-                course_id="X",
                 name="X",
-                weekday=0,  # invalid: must be 1~7
-                start_period=1,
-                end_period=2,
+                day_of_week=0,  # invalid: must be 1~7
+                periods="1-2",
             )
 
         with pytest.raises(Exception):
             CourseInfo(
-                course_id="X",
                 name="X",
-                weekday=8,  # invalid: must be 1~7
-                start_period=1,
-                end_period=2,
+                day_of_week=8,  # invalid: must be 1~7
+                periods="1-2",
             )
 
 

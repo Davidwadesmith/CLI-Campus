@@ -26,6 +26,15 @@ campus --help
 campus version
 campus test-adapter
 campus --json test-adapter
+
+# 身份认证
+campus auth login          # 交互式登录（凭证安全存储至系统密钥管理器）
+campus auth status         # 检查登录状态
+
+# 查询课程表
+campus course              # Rich 表格输出
+campus --json course       # JSON 输出（供 Agent 使用）
+campus course -s 2024-2025-1  # 指定学期
 ```
 
 ## 项目结构
@@ -37,11 +46,15 @@ cli-campus/
 │   ├── core/                # 核心协议层
 │   │   ├── models.py        # Pydantic 数据模型
 │   │   ├── interfaces.py    # Adapter 抽象基类
-│   │   └── config.py        # 配置管理
+│   │   ├── config.py        # 配置管理
+│   │   ├── auth.py          # 凭证管理 (keyring)
+│   │   └── exceptions.py    # 统一异常层级
 │   └── adapters/            # 适配器层
 │       ├── mock_adapter.py  # Mock 适配器
-│       └── vendors/         # 供应商适配器
-├── tests/                   # 单元测试
+│       ├── seu_auth_wrapper.py  # SEU-Auth SDK 封装
+│       ├── card_adapter.py  # 一卡通适配器
+│       └── course_adapter.py# 课程表适配器
+├── tests/                   # 单元测试 (80 tests)
 ├── docs/                    # 项目文档
 └── pyproject.toml           # 项目配置
 ```

@@ -9,6 +9,8 @@ dependencies = [
     "pydantic>=2.0.0",
     "rich>=13.0.0",
     "keyring>=24.0.0",
+    "httpx>=0.28.0",
+    "seu-auth @ git+https://github.com/Golevka2001/SEU-Auth.git@0.1.0",
 ]
 
 [project.scripts]
@@ -21,6 +23,9 @@ dev = [
     "pytest>=8.0.0",
     "pytest-asyncio>=0.23.0",
 ]
+
+[tool.hatch.metadata]
+allow-direct-references = true
 
 [tool.ruff]
 line-length = 88

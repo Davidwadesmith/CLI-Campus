@@ -28,14 +28,13 @@ class MockAdapter(BaseCampusAdapter):
     async def fetch(self, **kwargs: Any) -> list[CampusEvent]:
         """返回预设的 CampusEvent 列表。"""
         sample_course = CourseInfo(
-            course_id="B0900020S",
             name="高等数学 A",
             teacher="张三",
             location="九龙湖教三-302",
-            weekday=1,
-            start_period=1,
-            end_period=2,
-            weeks=list(range(1, 17)),
+            day_of_week=1,
+            periods="1-2",
+            weeks="1-16周",
+            raw_schedule_info="1-16周 星期一 1-2节 九龙湖教三-302",
         )
 
         event = CampusEvent(

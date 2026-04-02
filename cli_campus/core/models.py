@@ -27,6 +27,8 @@ class EventCategory(str, Enum):
     FINANCE = "finance"
     ROOM = "room"
     CARD = "card"
+    GRADE = "grade"
+    EXAM = "exam"
     OTHER = "other"
 
 
@@ -34,6 +36,8 @@ class AdapterSource(str, Enum):
     """数据来源枚举 — 标记 CampusEvent 来自哪个 Adapter / 供应商。"""
 
     SEU_CAS = "seu_cas"
+    SEU_CARD = "seu_card"
+    SEU_EHALL = "seu_ehall"
     ZHENGFANG = "zhengfang"
     CHAOXING = "chaoxing"
     YUKETANG = "yuketang"
@@ -81,27 +85,30 @@ class CampusEvent(BaseModel):
 
 
 class CourseInfo(BaseModel):
-    """课程信息模型 — 从教务系统中解析出的单节课程。
+    """课程信息模型 — 从教务系统 ehall 接口解析出的单节课程。
+
+    字段映射 (API → Model):
+        KCM → name, SKJS → teacher, JASMC → location,
+        SKXQ → day_of_week, KSJC/JSJC → periods, ZCMC → weeks,
+        YPSJDD → raw_schedule_info
 
     Attributes:
-        course_id: 课程编号（如 ``B0900020S``）。
         name: 课程名称。
         teacher: 授课教师。
         location: 上课地点（教学楼 + 教室）。
-        weekday: 星期几（1=周一 … 7=周日）。
-        start_period: 开始节次。
-        end_period: 结束节次。
-        weeks: 上课周次列表（如 ``[1,2,3,…,16]``）。
+        day_of_week: 星期几（1=周一 … 7=周日）。
+        periods: 节次范围字符串（如 "3-4"）。
+        weeks: 上课周次描述（如 "1-8周"）。
+        raw_schedule_info: 原始完整排课信息。
     """
 
-    course_id: str = Field(..., description="课程编号")
     name: str = Field(..., description="课程名称")
     teacher: str = Field(default="", description="授课教师")
     location: str = Field(default="", description="上课地点")
-    weekday: int = Field(..., ge=1, le=7, description="星期几 (1~7)")
-    start_period: int = Field(..., ge=1, description="开始节次")
-    end_period: int = Field(..., ge=1, description="结束节次")
-    weeks: list[int] = Field(default_factory=list, description="上课周次列表")
+    day_of_week: int = Field(..., ge=1, le=7, description="星期几 (1~7)")
+    periods: str = Field(..., description="节次范围 (如 '3-4')")
+    weeks: str = Field(default="", description="上课周次描述 (如 '1-8周')")
+    raw_schedule_info: str = Field(default="", description="原始完整排课信息")
 
 
 # ---------------------------------------------------------------------------
@@ -152,3 +159,92 @@ class TaskItem(BaseModel):
     deadline: Optional[datetime] = Field(default=None, description="截止时间")
     is_completed: bool = Field(default=False, description="是否已完成")
     url: str = Field(default="", description="任务原始链接")
+
+
+# ---------------------------------------------------------------------------
+# 领域模型 — CardInfo (一卡通)
+# ---------------------------------------------------------------------------
+
+
+class CardInfo(BaseModel):
+    """一卡通信息模型 — 校园卡余额与基本信息。
+
+    Attributes:
+        student_id: 学号 / 一卡通号。
+        name: 持卡人姓名。
+        balance: 卡内余额（元）。
+        status: 卡片状态（如 "正常", "挂失"）。
+    """
+
+    student_id: str = Field(..., description="学号 / 一卡通号")
+    name: str = Field(default="", description="持卡人姓名")
+    balance: float = Field(..., ge=0.0, description="卡内余额（元）")
+    status: str = Field(default="正常", description="卡片状态")
+
+
+# ---------------------------------------------------------------------------
+# 领域模型 — GradeInfo (成绩)
+# ---------------------------------------------------------------------------
+
+
+class GradeInfo(BaseModel):
+    """成绩信息模型 — 从 ehall 成绩查询接口解析的单条成绩。
+
+    字段映射 (API → Model):
+        KCM → course_name, ZCJ → score, XF → credit,
+        KCXZDM_DISPLAY → course_type, DJCJMC → grade_label,
+        XNXQDM → semester, SFJG_DISPLAY → passed
+
+    Attributes:
+        course_name: 课程名称。
+        score: 总成绩（数值或等级，如 "93" / "合格"）。
+        credit: 学分。
+        gpa: 学分绩点。
+        course_type: 课程性质（必修 / 选修 / 任选）。
+        grade_label: 等级成绩名称（优 / 良 / 中 / 及格 / 不及格）。
+        semester: 所属学期代码。
+        passed: 是否及格。
+    """
+
+    course_name: str = Field(..., description="课程名称")
+    score: str = Field(default="", description="总成绩")
+    credit: float = Field(default=0.0, description="学分")
+    gpa: float = Field(default=0.0, description="学分绩点")
+    course_type: str = Field(default="", description="课程性质")
+    grade_label: str = Field(default="", description="等级成绩名称")
+    semester: str = Field(default="", description="所属学期代码")
+    passed: bool = Field(default=True, description="是否及格")
+
+
+# ---------------------------------------------------------------------------
+# 领域模型 — ExamInfo (考试安排)
+# ---------------------------------------------------------------------------
+
+
+class ExamInfo(BaseModel):
+    """考试安排信息模型 — 从 ehall 考试安排接口解析的单条考试。
+
+    字段映射 (API → Model):
+        KCM → course_name, KSSJMS → time_text, JASMC → location,
+        ZWH → seat_number, ZJJSXM → teacher, XNXQDM → semester,
+        KSMC → exam_name
+
+    Attributes:
+        course_name: 课程名称。
+        time_text: 考试时间描述（如 "2025-11-21 19:00-21:00(星期五)"）。
+        location: 考场教室。
+        seat_number: 座位号。
+        teacher: 任课教师。
+        semester: 所属学期代码。
+        exam_name: 考试名称（如 "期中考试" / "期末考试"）。
+        credit: 学分。
+    """
+
+    course_name: str = Field(..., description="课程名称")
+    time_text: str = Field(default="", description="考试时间描述")
+    location: str = Field(default="", description="考场教室")
+    seat_number: str = Field(default="", description="座位号")
+    teacher: str = Field(default="", description="任课教师")
+    semester: str = Field(default="", description="所属学期代码")
+    exam_name: str = Field(default="", description="考试名称")
+    credit: float = Field(default=0.0, description="学分")
