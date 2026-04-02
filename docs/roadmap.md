@@ -158,8 +158,9 @@ extract:
 
 ### M2M 联调测试
 
-- [ ] 编写 50 行 Python 脚本接入 DeepSeek API
-- [ ] 测试 LLM 能否精准调用 CLI-Campus 工具
+- [x] 编写 M2M 联调测试脚本（`scripts/m2m_test.py`，~160 行）
+- [x] 支持 DeepSeek / OpenAI 兼容接口，通过环境变量配置
+- [x] 自动加载 Tool Schema → LLM 调用 → 执行 CLI → 返回结果 → LLM 回答
 
 ---
 
