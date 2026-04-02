@@ -36,11 +36,11 @@
 
 ### 攻坚统一身份认证 (CAS Engine)
 
-- [ ] 抓包逆向东南大学 CAS 登录加密流（RSA 密码加密、隐藏表单字段 `lt`、`execution`）
-- [ ] 集成 `keyring` 库实现凭证安全存储
-- [ ] 实现 `campus auth login` 命令（交互式引导输入学号密码）
-- [ ] 实现 `campus auth status` 命令（检查 Token/Cookie 有效性）
-- [ ] 实现 `campus auth logout` 命令（清除本地凭证）
+- [x] ~~抓包逆向东南大学 CAS 登录加密流~~ → 集成 SEU-Auth SDK 代替手动逆向
+- [x] 集成 `keyring` 库实现凭证安全存储
+- [x] 实现 `campus auth login` 命令（交互式引导输入学号密码）
+- [x] 实现 `campus auth status` 命令（检查 Token/Cookie 有效性）
+- [x] 实现 `campus auth logout` 命令（清除本地凭证）
 
 ```python
 # 预期 CAS 登录流程伪代码
@@ -76,8 +76,9 @@ $ campus bus --from 九龙湖 --to 四牌楼
 
 ### 实现首个动态适配器
 
-- [ ] 挑选一个不需要复杂验证码的查询接口（如空闲教室 `campus room` 或一卡通余额 `campus card`）
-- [ ] 验证全链路：CAS Token → API 请求 → Pydantic 校验 → Rich/JSON 输出
+- [x] 一卡通余额查询 `campus card`（CardAdapter）
+- [x] 课程表查询 `campus course`（CourseAdapter — ehall 教务接口）
+- [x] 验证全链路：CAS Token → API 请求 → Pydantic 校验 → Rich/JSON 输出
 
 ---
 

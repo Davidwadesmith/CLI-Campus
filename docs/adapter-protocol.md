@@ -96,9 +96,10 @@ class CampusEvent(BaseModel):
 
 | 模型 | 用途 | 关键字段 |
 |------|------|----------|
-| `CourseInfo` | 教务课程 | course_id, name, teacher, location, weekday, periods, weeks |
+| `CourseInfo` | 教务课程 | name, teacher, location, day_of_week, periods, weeks |
 | `BusRoute` | 校车时刻 | route_name, departure_time, departure_stop, arrival_stop |
 | `TaskItem` | 作业/DDL | task_id, platform, title, deadline, is_completed |
+| `CardInfo` | 一卡通 | student_id, name, balance, status |
 
 ### 3.3 枚举类型
 
@@ -115,6 +116,8 @@ class EventCategory(str, Enum):
 
 class AdapterSource(str, Enum):
     SEU_CAS = "seu_cas"
+    SEU_CARD = "seu_card"
+    SEU_EHALL = "seu_ehall"
     ZHENGFANG = "zhengfang"
     CHAOXING = "chaoxing"
     YUKETANG = "yuketang"

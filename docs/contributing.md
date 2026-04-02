@@ -150,21 +150,28 @@ cli-campus/
 │   │   ├── __init__.py
 │   │   ├── models.py           # Pydantic Standard Types
 │   │   ├── interfaces.py       # BaseCampusAdapter 抽象基类
-│   │   └── config.py           # 配置加载与管理
+│   │   ├── config.py           # 配置加载与管理
+│   │   ├── auth.py             # 凭证管理 (keyring)
+│   │   └── exceptions.py       # 统一异常层级
 │   └── adapters/               # 适配器层（脏活累活都在这）
 │       ├── __init__.py
 │       ├── mock_adapter.py     # Mock 适配器（调试 / CI 用）
-│       ├── seu_cas.py          # 东大统一身份认证模块
-│       └── vendors/            # 按供应商分类的第三方系统
-│           ├── __init__.py
-│           ├── chaoxing.py     # 超星学习通
-│           └── zhengfang.py    # 正方教务处
-├── tests/                      # pytest 测试
-│   ├── __init__.py
+│       ├── seu_auth_wrapper.py # SEU-Auth SDK 封装层
+│       ├── ehall_base.py       # ehall 教务应用基座（三阶段 CAS 认证）
+│       ├── card_adapter.py     # 一卡通适配器
+│       ├── course_adapter.py   # 课程表适配器 (ehall/wdkb)
+│       ├── grade_adapter.py    # 成绩查询适配器 (ehall/cjcx)
+│       └── exam_adapter.py     # 考试安排适配器 (ehall/studentWdksapApp)
+├── tests/                      # pytest 测试 (130 tests)
 │   ├── test_models.py          # 模型测试
 │   ├── test_adapters.py        # 适配器测试
 │   ├── test_cli.py             # CLI 命令测试
-│   └── test_config.py          # 配置测试
+│   ├── test_config.py          # 配置测试
+│   ├── test_card_adapter.py    # 一卡通适配器测试
+│   ├── test_course_adapter.py  # 课程表适配器测试
+│   ├── test_grade_adapter.py   # 成绩查询适配器测试
+│   ├── test_exam_adapter.py    # 考试安排适配器测试
+│   └── test_auth*.py           # 认证相关测试
 ├── docs/                       # 项目文档
 ├── .github/
 │   └── workflows/
@@ -249,3 +256,119 @@ ruff check .
 ruff format --check .
 pytest -v
 ```
+
+---
+
+## 7. 凭证安全与 .gitignore 规范
+
+### 绝对红线
+
+**严禁将任何个人凭证、会话文件、Token 提交到 Git 仓库。** 违反此规则的 PR 一律拒绝。
+
+### 已纳入 .gitignore 的敏感文件
+
+| 文件 / 模式 | 来源 | 说明 |
+|-------------|------|------|
+| `auth_session.json` | SEU-Auth SDK | SDK 本地持久化的 TGT、fingerprint 等会话数据 |
+| `*.tgt` | CAS 会话 | 认证票据缓存文件 |
+| `*.session` | 通用 | 各类本地会话文件 |
+| `.env` / `.env.*` | 环境变量 | 可能包含密码、API Key 等敏感配置 |
+
+### 凭证存储机制
+
+- 用户密码通过 `keyring` 安全存储在**操作系统原生密钥管理器**中（macOS Keychain / Windows Credential Manager / Linux Secret Service），不以明文或任何形式落盘到项目目录。
+- SEU-Auth SDK 会在项目根目录生成 `auth_session.json` 用于 TGT 缓存复用，该文件已被 `.gitignore` 排除。
+
+### 开发者自查清单
+
+在每次 `git add` 之前，请确认：
+
+```bash
+# 检查是否有敏感文件被暂存
+git diff --cached --name-only | grep -iE '(session|auth|\.env|\.tgt)'
+```
+
+---
+
+## 8. 校园网络环境与 ehall 访问
+
+### 网络要求
+
+`campus course` 等依赖 `ehall.seu.edu.cn` 的命令**必须在校园网络环境下运行**。校外网络会被 DNS/网关拦截并重定向至 `vpn.seu.edu.cn`（webVPN 门户），导致 API 返回 HTML 而非 JSON。
+
+### 可用的网络接入方式
+
+| 方式 | 说明 |
+|------|------|
+| 校园 WiFi（`seu-wlan`） | 在校内直接连接即可 |
+| Sangfor/EasyConnect VPN | 校外通过学校 VPN 客户端接入校园网 |
+| 有线网络 | 校内宿舍 / 实验室有线接入 |
+
+### ehall 适配器的认证流程
+
+ehall 平台的 API 需要**三步 Session 初始化**。此流程已封装在 `EhallBaseAdapter`（`ehall_base.py`）基类中，所有 ehall 教务适配器（课表、成绩、考试）均继承该基类：
+
+1. **CAS → ehall 平台认证**：`manager.login(service="http://ehall.seu.edu.cn/login?service=...")` — 注意 service URL 必须使用 `http://`（非 `https://`），后者不在 CAS 白名单中。获取平台级 `JSESSIONID` / `asessionid`。
+2. **appShow 应用授权**：GET `https://ehall.seu.edu.cn/appShow?appId=<APP_ID>`，ehall 返回 302 重定向到带 `gid_` 授权令牌的 `http://` URL。**必须截取第一步重定向的 `http://` URL**，不能使用后续自动升级的 `https://`（同样不在 CAS 白名单中）。**每个 ehall 应用有独立的 appId，不同应用之间 Session 不互通（跨应用访问返回 403）。**
+3. **CAS → 应用认证**：以 Step 2 获取的 URL 为 service，执行**第二次 CAS 登录**。SDK 复用已存储的 TGT 自动完成 SSO。访问 redirect_url 后获取应用级 `GS_SESSIONID` / `_WEU`。
+4. **API 调用**：POST 到 `modules/<module>/<endpoint>.do` 获取 JSON 数据。
+
+### ehall 应用 ID 与 API 端点映射
+
+| 功能 | appId | 模块名 | API 端点 | Adapter 类 |
+|------|-------|--------|----------|-----------|
+| 课程表 | `4770397878132218` | `wdkb` | `xskcb/xskcb.do` | `CourseAdapter` |
+| 成绩查询 | `4768574631264620` | `cjcx` | `cjcx/xscjcx.do` | `GradeAdapter` |
+| 考试安排 | `4768687067472349` | `studentWdksapApp` | `wdksap/wdksap.do` | `ExamAdapter` |
+
+新增 ehall 教务适配器只需继承 `EhallBaseAdapter`，设置 `_APP_ID`、`_API_PATH`，实现 `_module_name()` 和 `_parse_response()` 方法。
+
+> **SDK headers 清理**：SEU-Auth SDK 返回的 httpx 客户端携带 CAS 专用的 `Content-Type: application/json`、`Origin`、`Referer` 头。这些头对 ehall 业务请求有害（触发 403），CourseAdapter 在每次 CAS 登录后自动清理。
+
+### VPN 重定向检测
+
+CourseAdapter 在每步请求后检查响应 URL 是否包含 `vpn.seu.edu.cn`，若检测到则立即抛出带有网络环境提示的 `AdapterError`，避免模糊的 JSON 解析错误。
+
+### 学期自动推断
+
+ehall 课表 API（`xskcb.do`）要求传入 `XNXQDM` 学期代码参数（格式：`YYYY1-YYYY2-T`）。**注意 SEU 的学期编号与自然时间顺序不同**（已通过 `xnxq/xnxqcx.do` 端点的 41 条历史学期记录验证）：
+
+- T=1：暑期学校（归入下一学年）
+- T=2：秋季学期
+- T=3：春季学期
+
+ehall **没有**提供服务端"当前学期"查询接口（`curdqxnxq.do` 返回 403），因此采用本地日期推算：
+
+| 月份 | 学期 | 学年代码示例（假设当前年份为 Y） |
+|------|------|----------------------------------|
+| 7 ~ 8 | 暑期学校 (T=1)，归入下一学年 | `Y-(Y+1)-1` |
+| 9 ~ 12 | 秋季 (T=2) | `Y-(Y+1)-2` |
+| 1 | 秋季 (T=2)（考试周仍属上学期） | `(Y-1)-Y-2` |
+| 2 ~ 6 | 春季 (T=3) | `(Y-1)-Y-3` |
+
+实现位于 `course_adapter.py` 的 `compute_current_semester()` 函数，用户也可通过 `--semester` 参数手动指定。
+
+### 课表网格渲染
+
+`campus course` 使用 Rich Table 渲染周视图课表网格：
+
+- **行**：节次分组（1-2 / 3-5 / 6-7 / 8-10 / 11-12），空行自动省略
+- **列**：周一至周五（若检测到周末课程自动扩展为七列）
+- **单元格**：课程名（粗体）+ 教室（暗色）+ 周次（绿色）
+- **标题**：动态显示学年和学期名称，如 "📚 2025-2026 学年 春季学期课程表"
+- **`--week N`**：按教学周筛选，仅显示第 N 周有课的课程（基于 `ZCMC` 字段的周次范围解析）
+
+### 成绩查询
+
+`campus grade` 查询成绩，使用 `GradeAdapter`（appId=`4768574631264620`）。
+
+- 默认查询全部学期成绩，`--semester` 可指定学期
+- 渲染包含课程名、成绩、学分、绩点、类型、学期的表格
+- 底部显示总学分和加权绩点
+
+### 考试安排
+
+`campus exam` 查询考试安排，使用 `ExamAdapter`（appId=`4768687067472349`）。
+
+- 默认查询当前学期考试，`--semester` 可指定学期
+- 渲染包含课程名、考试时间、考场、座位号、学分的表格
