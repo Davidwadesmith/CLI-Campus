@@ -954,18 +954,21 @@ def venue_list(
     """列出指定类型的所有可预约场馆。"""
     from cli_campus.adapters.venue_adapter import VenueAdapter
 
-    adapter = VenueAdapter()
+    async def _run() -> list:
+        adapter = VenueAdapter()
+        try:
+            return await adapter.get_venues(type_name)
+        finally:
+            await adapter.close()
 
     try:
-        venues = asyncio.run(adapter.get_venues(type_name))
+        venues = asyncio.run(_run())
     except AuthRequiredError:
         _handle_auth_required()
     except AuthFailedError as exc:
         _handle_auth_failed(exc)
     except AdapterError as exc:
         _handle_adapter_error(exc)
-    finally:
-        asyncio.run(adapter.close())
 
     if campus:
         venues = [v for v in venues if campus in v.campus or campus in v.name]
@@ -1027,32 +1030,36 @@ def venue_slots(
     from cli_campus.adapters.venue_adapter import VenueAdapter
 
     query_date = date or (dt.date.today() + dt.timedelta(days=1)).strftime("%Y-%m-%d")
-    adapter = VenueAdapter()
+
+    async def _run() -> list[tuple]:
+        adapter = VenueAdapter()
+        try:
+            venues = await adapter.get_venues(type_name)
+            if campus:
+                venues = [v for v in venues if campus in v.campus or campus in v.name]
+            if venue_number:
+                venues = [v for v in venues if venue_number.upper() in v.number.upper()]
+
+            result: list[tuple] = []
+            for venue in venues:
+                try:
+                    slots = await adapter.get_time_slots(venue.venue_id, query_date)
+                    for slot in slots:
+                        result.append((venue, slot))
+                except AdapterError:
+                    pass
+            return result
+        finally:
+            await adapter.close()
 
     try:
-        venues = asyncio.run(adapter.get_venues(type_name))
-        if campus:
-            venues = [v for v in venues if campus in v.campus or campus in v.name]
-        if venue_number:
-            venues = [v for v in venues if venue_number.upper() in v.number.upper()]
-
-        # 收集所有时段
-        all_slots: list[tuple["object", "object"]] = []
-        for venue in venues:
-            try:
-                slots = asyncio.run(adapter.get_time_slots(venue.venue_id, query_date))
-                for slot in slots:
-                    all_slots.append((venue, slot))
-            except AdapterError:
-                pass
+        all_slots = asyncio.run(_run())
     except AuthRequiredError:
         _handle_auth_required()
     except AuthFailedError as exc:
         _handle_auth_failed(exc)
     except AdapterError as exc:
         _handle_adapter_error(exc)
-    finally:
-        asyncio.run(adapter.close())
 
     if _json_output:
         payload = [
@@ -1185,42 +1192,44 @@ def venue_book(
     from cli_campus.adapters.venue_adapter import VenueAdapter
 
     booking_date = date or (dt.date.today() + dt.timedelta(days=1)).strftime("%Y-%m-%d")
-    adapter = VenueAdapter()
+
+    async def _run():
+        adapter = VenueAdapter()
+        try:
+            # 如果是编号而非 UUID，先查找对应的 UUID
+            venue_id = venue
+            if len(venue) < 36:
+                venues = await adapter.get_venues(type_name)
+                matched = [v for v in venues if v.number.upper() == venue.upper()]
+                if not matched:
+                    if _json_output:
+                        typer.echo(
+                            json.dumps(
+                                {
+                                    "error": "not_found",
+                                    "message": f"未找到场馆: {venue}",
+                                }
+                            )
+                        )
+                    else:
+                        console.print(
+                            f"[red]✗[/red] 未找到编号为 [bold]{venue}[/bold] 的场馆"
+                        )
+                    raise typer.Exit(code=1)
+                venue_id = matched[0].venue_id
+
+            return await adapter.make_booking(venue_id, booking_date, start, end, event)
+        finally:
+            await adapter.close()
 
     try:
-        # 如果是编号而非 UUID，先查找对应的 UUID
-        venue_id = venue
-        if len(venue) < 36:
-            venues = asyncio.run(adapter.get_venues(type_name))
-            matched = [v for v in venues if v.number.upper() == venue.upper()]
-            if not matched:
-                if _json_output:
-                    typer.echo(
-                        json.dumps(
-                            {
-                                "error": "not_found",
-                                "message": f"未找到场馆: {venue}",
-                            }
-                        )
-                    )
-                else:
-                    console.print(
-                        f"[red]✗[/red] 未找到编号为 [bold]{venue}[/bold] 的场馆"
-                    )
-                raise typer.Exit(code=1)
-            venue_id = matched[0].venue_id
-
-        booking = asyncio.run(
-            adapter.make_booking(venue_id, booking_date, start, end, event)
-        )
+        booking = asyncio.run(_run())
     except AuthRequiredError:
         _handle_auth_required()
     except AuthFailedError as exc:
         _handle_auth_failed(exc)
     except AdapterError as exc:
         _handle_adapter_error(exc)
-    finally:
-        asyncio.run(adapter.close())
 
     if _json_output:
         typer.echo(json.dumps(booking.model_dump(), ensure_ascii=False))
@@ -1243,18 +1252,21 @@ def venue_cancel(
     """取消场馆预约。"""
     from cli_campus.adapters.venue_adapter import VenueAdapter
 
-    adapter = VenueAdapter()
+    async def _run():
+        adapter = VenueAdapter()
+        try:
+            return await adapter.cancel_booking(booking_id, reason)
+        finally:
+            await adapter.close()
 
     try:
-        success = asyncio.run(adapter.cancel_booking(booking_id, reason))
+        success = asyncio.run(_run())
     except AuthRequiredError:
         _handle_auth_required()
     except AuthFailedError as exc:
         _handle_auth_failed(exc)
     except AdapterError as exc:
         _handle_adapter_error(exc)
-    finally:
-        asyncio.run(adapter.close())
 
     if _json_output:
         typer.echo(json.dumps({"status": "ok" if success else "failed"}))
@@ -1270,18 +1282,21 @@ def venue_my() -> None:
     """查看我的预约记录。"""
     from cli_campus.adapters.venue_adapter import VenueAdapter
 
-    adapter = VenueAdapter()
+    async def _run():
+        adapter = VenueAdapter()
+        try:
+            return await adapter.get_my_bookings()
+        finally:
+            await adapter.close()
 
     try:
-        bookings = asyncio.run(adapter.get_my_bookings())
+        bookings = asyncio.run(_run())
     except AuthRequiredError:
         _handle_auth_required()
     except AuthFailedError as exc:
         _handle_auth_failed(exc)
     except AdapterError as exc:
         _handle_adapter_error(exc)
-    finally:
-        asyncio.run(adapter.close())
 
     if _json_output:
         typer.echo(json.dumps([b.model_dump() for b in bookings], ensure_ascii=False))
@@ -1484,7 +1499,7 @@ def sop_run(
 
 @app.command("mcp")
 def mcp_serve() -> None:
-    """启动 CLI-Campus MCP Server — 以 stdio 模式运行，供 Claude Desktop 或通用 Agent 调用。"""
+    """启动 MCP Server (stdio 模式)，供 Claude Desktop 或 Agent 调用。"""
     from cli_campus.mcp_server import mcp
 
     mcp.run()
