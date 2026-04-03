@@ -277,8 +277,14 @@ async def get_course_schedule(semester: str = "", week: int = None) -> str:
 #### 启动 MCP Server
 
 ```bash
-# 通过 CLI 命令以 stdio 模式启动
+# 方式一：通过 Typer CLI 启动
 campus mcp
+
+# 方式二：独立入口（推荐，绕过 Typer，适合 MCP 客户端配置）
+campus-mcp
+
+# 方式三：Python 模块启动
+python -m cli_campus.mcp_server
 ```
 
 #### 已注册的 MCP 能力
@@ -290,23 +296,37 @@ campus mcp
 | **Resource** | `campus://info/bus-notes` | 校车特殊规则说明（节假日、短驳车等上下文） |
 | **Prompt** | `campus_morning_briefing` | 早间速报预设提示词（引导 Agent 生成当日简报） |
 
-#### Claude Desktop 配置示例
+#### MCP 客户端配置示例
 
-在 `claude_desktop_config.json` 中添加：
+**Cherry Studio** (STDIO 类型)：
+
+| 字段 | 值 |
+|------|------|
+| Command | `uv` |
+| Arguments | `--directory /path/to/cli-campus run campus-mcp` |
+
+**Claude Desktop** (`claude_desktop_config.json`)：
 
 ```json
 {
   "mcpServers": {
     "cli-campus": {
-      "command": "campus",
-      "args": ["mcp"]
+      "command": "uv",
+      "args": [
+        "--directory", "/path/to/cli-campus",
+        "run", "campus-mcp"
+      ]
     }
   }
 }
 ```
 
+> **关键**：使用 `uv --directory` 确保 MCP 客户端能正确定位项目虚拟环境。
+> `campus-mcp` 是独立入口，不经过 Typer，避免 CLI 框架干扰 stdio 通信。
+
 #### 设计要点
 
+- **独立入口点**：`campus-mcp` 绕过 Typer 直接启动，避免 CLI 框架干扰 stdio JSON-RPC 通信
 - **直接复用 Adapter 层**：MCP Tool 绕过 Typer 解析逻辑，直接调用底层 Adapter，零冗余
 - **复用 OS Keyring 鉴权**：MCP 基于 stdio 本地运行，自动继承用户已保存的 CAS 凭证
 - **友好的错误降级**：当凭证缺失时，Tool 返回结构化错误提示而非抛出异常
@@ -320,4 +340,4 @@ campus mcp
 - **输出过滤**：`--json` 模式下不输出任何 Rich 渲染的颜色控制字符
 - **速率限制**：Agent 高频调用时，Adapter 层内置请求节流，避免触发学校反爬
 
-Tool Schema 自动生成器与 M2M 联调已在 **Phase 3** 实现。MCP Server 已于 Phase 3 落地，支持 `campus mcp` 命令以 stdio 模式启动。
+Tool Schema 自动生成器与 M2M 联调已在 **Phase 3** 实现。MCP Server 已于 Phase 3 落地，支持 `campus mcp` 和 `campus-mcp` 两种启动方式。

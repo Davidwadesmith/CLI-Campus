@@ -72,24 +72,45 @@ CLI-Campus 内置了标准的 [Model Context Protocol (MCP)](https://modelcontex
 1. **完成安装**：按“快速开始”节完成 `uv sync` 安装依赖。
 2. **完成登录**（可选）：如需查课表等需要认证的功能，先在终端运行 `campus auth login` 完成 CAS 登录。校车时刻表为静态数据，无需登录即可使用。
 
-### 启动 MCP Server
+### 启动方式
+
+CLI-Campus 提供两种方式启动 MCP Server：
 
 ```bash
+# 方式一：通过 Typer CLI 命令启动
 campus mcp
+
+# 方式二：直接启动（推荐用于 MCP 客户端配置）
+campus-mcp
 ```
 
-该命令以 stdio 模式启动 MCP Server，持续监听 Agent 请求。
+两种方式均以 stdio 模式运行，持续监听 Agent 的 JSON-RPC 请求。
+
+### 配置 Cherry Studio
+
+在 Cherry Studio 中添加 MCP 服务器，类型选择 **STDIO**，配置如下：
+
+| 字段 | 值 |
+|------|------|
+| **Command** | `uv` |
+| **Arguments** | `--directory /path/to/cli-campus run campus-mcp` |
+
+> 将 `/path/to/cli-campus` 替换为项目实际路径，Windows 示例：
+> `--directory E:\Projects\CLI-Campus run campus-mcp`
 
 ### 配置 Claude Desktop
 
-在 Claude Desktop 配置文件 `claude_desktop_config.json` 中添加：
+在 `claude_desktop_config.json` 中添加：
 
 ```json
 {
   "mcpServers": {
     "cli-campus": {
-      "command": "campus",
-      "args": ["mcp"]
+      "command": "uv",
+      "args": [
+        "--directory", "/path/to/cli-campus",
+        "run", "campus-mcp"
+      ]
     }
   }
 }

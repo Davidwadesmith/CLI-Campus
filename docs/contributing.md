@@ -283,6 +283,21 @@ ruff format --check .
 pytest -v
 ```
 
+### 提交前强制验证（红线）
+
+**每次 `git commit` 之前，必须在本地跑通以上三项检查（lint / format / test）。** CI 流水线会执行完全相同的步骤；如果本地不通过，CI 必定失败。
+
+严禁 "先提交再看 CI 结果" 的工作方式。推荐安装 `pre-commit`，在 `git commit` 时自动拦截：
+
+```bash
+# 安装 pre-commit hook
+pip install pre-commit
+pre-commit install
+
+# 手动运行完整 CI 模拟（等价于 GitHub Actions 流水线）
+ruff check . && ruff format --check . && pytest -v
+```
+
 ---
 
 ## 7. 凭证安全与 .gitignore 规范

@@ -1,4 +1,5 @@
 """Real network integration test for VenueAdapter."""
+
 import asyncio
 import datetime
 

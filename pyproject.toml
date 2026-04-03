@@ -21,6 +21,7 @@ dependencies = [
 
 [project.scripts]
 campus = "cli_campus.main:app"
+campus-mcp = "cli_campus.mcp_server:main"
 
 [dependency-groups]
 dev = [
