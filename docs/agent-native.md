@@ -248,31 +248,88 @@ for event in events:
     print(event.model_dump_json())
 ```
 
-### 4.3 作为 MCP Server（已实现）
+### 4.3 作为 MCP Server（已实现 — Auto-Discovery Tool Factory）
 
-CLI-Campus 已实现标准的 Model Context Protocol Server，让任何支持 MCP 的 Agent（如 Claude Desktop）直接调用校园工具：
+CLI-Campus 实现了基于 **MCP Auto-Registrar** 的自动挂载引擎，在启动时自动反射 Typer 命令树，将所有业务命令动态注册为 MCP Tools。新增 CLI 命令后**无需手动修改** `mcp_server.py`。
+
+#### 架构设计
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  mcp_server.py — Auto-Discovery Tool Factory                │
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│  模块一: Context-Aware 基础感知工具                           │
+│  ├── get_current_time()     → 日期/时间/星期几               │
+│  └── get_semester_info()    → 学年学期代码/学期名称           │
+│                                                             │
+│  模块二: Auto-Registrar 引擎                                 │
+│  ├── auto_register_tools()  → 遍历 Typer 命令树              │
+│  ├── _make_tool_function()  → 动态生成带类型注解的 async 函数  │
+│  └── _invoke_cli_json()     → 进程内 --json 模式调用 CLI     │
+│                                                             │
+│  Resources & Prompts                                        │
+│  ├── campus://info/bus-notes                                │
+│  ├── campus_assistant_system_prompt (查时间→算参数→调工具)    │
+│  └── campus_morning_briefing                                │
+└─────────────────────────────────────────────────────────────┘
+```
+
+#### 技术难点: 动态函数类型推导
+
+FastMCP 依赖 `inspect.signature()` 和 `__annotations__` 推导 JSON Schema。Auto-Registrar 通过以下方式确保动态生成的函数拥有正确签名:
+
+1. 从 Click 命令的 `params` 提取参数名、类型和默认值
+2. 使用 `exec()` 构建具有正确 Python 类型注解的 `async def` 函数
+3. 设置 `__annotations__`、`__doc__` 和 `__module__` 属性
+4. 通过 `mcp.tool()()` 注册，FastMCP 即可生成完整的 JSON Schema
 
 ```python
-# cli_campus/mcp_server.py
-from mcp.server.fastmcp import FastMCP
-mcp = FastMCP("CLI-Campus")
-
-@mcp.tool()
-async def get_campus_bus(route: str = "", schedule_type: str = "") -> str:
-    """查询校车时刻表。"""
-    from cli_campus.adapters.bus_adapter import BusAdapter
-    adapter = BusAdapter()
-    events = await adapter.fetch(route=route, schedule_type=schedule_type)
-    return _events_to_json(events)
-
-@mcp.tool()
-async def get_course_schedule(semester: str = "", week: int = None) -> str:
-    """查询本学期课程表。"""
-    from cli_campus.adapters.course_adapter import CourseAdapter
-    adapter = CourseAdapter(config={"semester": semester} if semester else None)
-    events = await adapter.fetch()
-    return _events_to_json(events)
+# Auto-Registrar 核心流程 (伪代码)
+for name, cmd in cli.commands.items():
+    if name in _SKIP_COMMANDS:
+        continue
+    # 提取 Click 参数 → Python 类型
+    params = cmd.params  # [route: str, schedule_type: str, ...]
+    # 动态生成: async def campus_bus(route: str = None, ...) -> str
+    func = _make_tool_function("campus_bus", ["bus"], params, docstring)
+    # 注册到 FastMCP
+    mcp.tool()(func)
 ```
+
+#### 大模型标准调用 SOP
+
+Agent 收到用户查询后，应遵循内置系统提示词 (`campus_assistant_system_prompt`) 中的标准流程:
+
+```
+Step 1: get_current_time()        → 获取时间锚点 (今天周几? 几月几号?)
+Step 2: get_semester_info()       → 获取学期代码 (如需)
+Step 3: campus_<tool>(params)     → 调用业务工具
+Step 4: 将 JSON 结果整理为人类可读的回复
+```
+
+#### 已注册的 MCP 能力
+
+| 类别 | 名称 | 说明 |
+|------|------|------|
+| **Tool** | `get_current_time` | 获取日期/时间/星期几 (处理相对时间请求前必须调用) |
+| **Tool** | `get_semester_info` | 获取当前学年学期代码 |
+| **Tool** | `campus_bus` | 查询校车时刻表 |
+| **Tool** | `campus_course` | 查询课程表 |
+| **Tool** | `campus_grade` | 查询成绩 |
+| **Tool** | `campus_exam` | 查询考试安排 |
+| **Tool** | `campus_card` | 查询一卡通余额 |
+| **Tool** | `campus_venue_list` | 列出可预约场馆 |
+| **Tool** | `campus_venue_slots` | 查询场馆时段 |
+| **Tool** | `campus_venue_book` | 预约场馆 |
+| **Tool** | `campus_venue_my` | 查看我的预约 |
+| **Tool** | `campus_venue_cancel` | 取消预约 |
+| **Tool** | `campus_fetch` | 运行 YAML 声明式适配器 |
+| **Resource** | `campus://info/bus-notes` | 校车特殊规则说明（节假日、短驳车等上下文） |
+| **Prompt** | `campus_assistant_system_prompt` | 系统提示词 (查时间→算参数→调工具 SOP) |
+| **Prompt** | `campus_morning_briefing` | 早间速报预设提示词 |
+
+> **注意**: 业务工具列表由 Auto-Registrar 自动生成，新增 Typer 命令后自动可用。
 
 #### 启动 MCP Server
 
@@ -286,15 +343,6 @@ campus-mcp
 # 方式三：Python 模块启动
 python -m cli_campus.mcp_server
 ```
-
-#### 已注册的 MCP 能力
-
-| 类别 | 名称 | 说明 |
-|------|------|------|
-| **Tool** | `get_campus_bus` | 查询校车时刻表，支持线路和类型筛选 |
-| **Tool** | `get_course_schedule` | 查询课程表，支持学期和教学周过滤 |
-| **Resource** | `campus://info/bus-notes` | 校车特殊规则说明（节假日、短驳车等上下文） |
-| **Prompt** | `campus_morning_briefing` | 早间速报预设提示词（引导 Agent 生成当日简报） |
 
 #### MCP 客户端配置示例
 
@@ -326,11 +374,13 @@ python -m cli_campus.mcp_server
 
 #### 设计要点
 
+- **零维护成本**：Auto-Registrar 自动发现新命令，无需手动编写 `@mcp.tool()` 包裹函数
+- **Context-Aware**：`get_current_time` + `get_semester_info` 提供时间锚点，解决大模型缺乏校历上下文的痛点
+- **完整的类型注解**：动态函数拥有正确的 `__signature__` 和 `__annotations__`，FastMCP 自动生成 JSON Schema
 - **独立入口点**：`campus-mcp` 绕过 Typer 直接启动，避免 CLI 框架干扰 stdio JSON-RPC 通信
-- **直接复用 Adapter 层**：MCP Tool 绕过 Typer 解析逻辑，直接调用底层 Adapter，零冗余
+- **进程内 CLI 调用**：通过 `typer.testing.CliRunner` 在进程内以 `--json` 模式调用，复用 CLI 完整的错误处理逻辑
 - **复用 OS Keyring 鉴权**：MCP 基于 stdio 本地运行，自动继承用户已保存的 CAS 凭证
 - **友好的错误降级**：当凭证缺失时，Tool 返回结构化错误提示而非抛出异常
-- **完整的类型注解与 Docstring**：FastMCP 据此自动生成 JSON Schema，Agent 可自动发现能力
 
 ---
 

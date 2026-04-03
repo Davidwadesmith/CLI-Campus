@@ -122,20 +122,49 @@ campus-mcp
 
 ### 可用能力
 
+MCP Server 采用 **自动挂载引擎 (Auto-Discovery Tool Factory)**，会在启动时自动反射 Typer 命令树，将所有业务命令动态注册为 MCP Tools。新增 CLI 命令后无需手动修改 `mcp_server.py`。
+
+#### Context-Aware 基础工具
+
 | 类别 | 名称 | 说明 |
 |------|------|------|
-| **Tool** | `get_campus_bus` | 查询校车时刻表，支持按线路、时刻表类型筛选 |
-| **Tool** | `get_course_schedule` | 查询课程表，支持学期和教学周过滤 |
+| **Tool** | `get_current_time` | 获取当前日期、时间、星期几 — 处理相对时间请求时必须首先调用 |
+| **Tool** | `get_semester_info` | 获取当前学年学期代码和学期名称 — 调用课表/成绩等工具前的基准信息 |
+
+#### 自动注册的业务工具
+
+以下工具由 Auto-Registrar 从 CLI 命令树自动生成，参数与 `campus --json <command>` 完全一致：
+
+| 类别 | 名称 | 说明 |
+|------|------|------|
+| **Tool** | `campus_bus` | 查询校车时刻表，支持按线路、时刻表类型筛选 |
+| **Tool** | `campus_course` | 查询课程表，支持学期和教学周过滤 |
+| **Tool** | `campus_grade` | 查询成绩，支持按学期筛选 |
+| **Tool** | `campus_exam` | 查询考试安排 |
+| **Tool** | `campus_card` | 查询一卡通余额 |
+| **Tool** | `campus_venue_list` | 列出可预约场馆 |
+| **Tool** | `campus_venue_slots` | 查询场馆时段可用情况 |
+| **Tool** | `campus_venue_book` | 预约场馆 |
+| **Tool** | `campus_venue_my` | 查看我的预约 |
+| **Tool** | `campus_venue_cancel` | 取消预约 |
+
+#### Resources & Prompts
+
+| 类别 | 名称 | 说明 |
+|------|------|------|
 | **Resource** | `campus://info/bus-notes` | 校车特殊规则说明（节假日、短駁车等上下文） |
+| **Prompt** | `campus_assistant_system_prompt` | 系统提示词，建立"查时间→算参数→调业务工具"的标准 SOP |
 | **Prompt** | `campus_morning_briefing` | 早间速报预设提示词，引导 Agent 组合课表+校车生成当日简报 |
 
 ### 示例对话
 
 配置完成后，在 Claude Desktop 中可以直接说：
 
-- “给我查一下今天的课表”
-- “最近一班去四牌楼的校车几点发车？”
-- “帮我生成今天的校园早报”（使用 `campus_morning_briefing` prompt）
+- "给我查一下今天的课表"（Agent 会自动先调用 `get_current_time` → `get_semester_info` → `campus_course`）
+- "最近一班去四牌楼的校车几点发车？"
+- "帮我生成今天的校园早报"（使用 `campus_morning_briefing` prompt）
+- "查一下我的成绩"（`campus_grade`）
+- "明天有没有可以预约的羽毛球场？"（`get_current_time` → `campus_venue_slots`）
 
 ## 项目结构
 

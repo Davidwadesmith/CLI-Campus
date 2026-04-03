@@ -1,20 +1,35 @@
-"""CLI-Campus MCP Server — 将 Adapter 能力暴露为 MCP Tools / Resources / Prompts。
+"""CLI-Campus MCP Server — 自动挂载引擎 (Auto-Discovery Tool Factory)。
 
-通过 FastMCP 将底层 Adapter 封装为标准 MCP 协议，
+通过 FastMCP 将底层 CLI 命令能力自动暴露为标准 MCP Tools / Resources / Prompts，
 使 Claude Desktop 或通用 Agent 可直接调用校园数据能力。
 
-**本模块不依赖 Typer 解析逻辑，直接调用 Adapter 层。**
+**核心设计**:
+- 模块一：Context-Aware 基础感知工具（时间、学期），无需凭证。
+- 模块二：Auto-Registrar 引擎，反射 Typer 命令树，动态生成 MCP Tools。
+  彻底消灭手动编写 ``@mcp.tool()`` 包裹函数的体力活。
+
+**技术要点**:
+- 动态函数通过 ``exec()`` 构建，拥有正确的 ``__signature__``、
+  ``__annotations__`` 和 ``__doc__``，确保 FastMCP 能推导出完整的 JSON Schema。
+- 业务工具统一捕获 ``AuthRequiredError`` / ``AuthFailedError`` / ``AdapterError``，
+  将异常转化为结构化 JSON 错误信息返回给大模型。
 """
 
 from __future__ import annotations
 
 import json
-from typing import Optional
+import logging
+import textwrap
+from datetime import datetime
+from typing import Any, Optional
 
+import click
+import typer
 from mcp.server.fastmcp import FastMCP
 
-from cli_campus.core.exceptions import AdapterError, AuthFailedError, AuthRequiredError
 from cli_campus.core.models import CampusEvent
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Server 初始化
@@ -37,93 +52,309 @@ def _events_to_json(events: list[CampusEvent]) -> str:
 
 
 # ---------------------------------------------------------------------------
-# MCP Tools
+# 模块一：Context-Aware 基础感知工具
 # ---------------------------------------------------------------------------
 
-
-@mcp.tool()
-async def get_campus_bus(route: str = "", schedule_type: str = "") -> str:
-    """查询校车时刻表。
-
-    返回东南大学校区接驳车发车时间，支持按线路和时刻表类型筛选。
-
-    Args:
-        route: 按线路名称模糊筛选，如 "循环"、"兰台"。
-            留空返回全部线路。
-        schedule_type: 时刻表类型，可选值: "workday"(工作日)、
-            "holiday"(节假日)、"spring_festival"(寒假)。
-            留空返回全部类型。
-
-    Returns:
-        JSON 格式的校车时刻数据数组。
-        每条记录包含线路名、发车时间、出发站、到达站等信息。
-    """
-    from cli_campus.adapters.bus_adapter import BusAdapter
-
-    adapter = BusAdapter()
-    events = await adapter.fetch(route=route, schedule_type=schedule_type)
-    return _events_to_json(events)
+_DAY_NAMES: dict[int, str] = {
+    0: "周一",
+    1: "周二",
+    2: "周三",
+    3: "周四",
+    4: "周五",
+    5: "周六",
+    6: "周日",
+}
 
 
 @mcp.tool()
-async def get_course_schedule(semester: str = "", week: Optional[int] = None) -> str:
-    """查询本学期课程表。
+async def get_current_time() -> str:
+    """获取当前系统的准确日期、时间和星期几。
 
-    通过东南大学 ehall 教务系统获取学生课程安排，
-    需要用户事先通过 campus auth login 登录。
-
-    Args:
-        semester: 学年学期代码，格式如 "2025-2026-3"。
-            留空则自动推算当前学期。
-        week: 仅返回指定教学周有课的课程。
-            留空返回全部课程。
+    在处理包含"今天"、"明天"、"这周"、"下周"等相对时间的请求时，
+    **必须先调用此工具**以获取准确的时间锚点，避免因缺少时间上下文
+    而产生错误推断。
 
     Returns:
-        JSON 格式的课程数据数组。每条记录包含课程名、
-        教师、教室、星期、节次、周次等信息。
-        如果凭证缺失或失效，返回包含错误提示的 JSON。
+        JSON 字符串，包含以下字段:
+        - date: 日期 (YYYY-MM-DD)
+        - time: 时间 (HH:MM:SS)
+        - weekday: 星期几 (如 "周三")
+        - weekday_number: 星期几数字 (1=周一, 7=周日)
+        - timestamp: ISO 8601 完整时间戳
     """
-    from cli_campus.adapters.course_adapter import (
-        CourseAdapter,
-        parse_weeks,
+    now = datetime.now()
+    weekday_num = now.isoweekday()  # 1=Monday, 7=Sunday
+    return json.dumps(
+        {
+            "date": now.strftime("%Y-%m-%d"),
+            "time": now.strftime("%H:%M:%S"),
+            "weekday": _DAY_NAMES.get(now.weekday(), ""),
+            "weekday_number": weekday_num,
+            "timestamp": now.isoformat(),
+        },
+        ensure_ascii=False,
     )
 
-    config: dict[str, str] = {}
-    if semester:
-        config["semester"] = semester
 
-    adapter = CourseAdapter(config=config if config else None)
+@mcp.tool()
+async def get_semester_info() -> str:
+    """获取当前的学年学期代码和学期名称。
 
-    try:
-        events = await adapter.fetch()
-    except AuthRequiredError:
+    在调用课程表 (get_course_schedule)、成绩 (get_grade)、
+    考试安排 (get_exam) 等涉及学期参数的工具之前，
+    **建议先调用此工具**获取当前学期的基准信息作为默认参数。
+
+    Returns:
+        JSON 字符串，包含以下字段:
+        - semester_code: 学年学期代码 (如 "2025-2026-3")
+        - academic_year: 学年 (如 "2025-2026")
+        - semester_name: 学期中文名 (如 "春季")
+        - semester_number: 学期编号 (1=暑期学校, 2=秋季, 3=春季)
+    """
+    from cli_campus.adapters.course_adapter import (
+        _SEMESTER_NAMES,
+        compute_current_semester,
+    )
+
+    code = compute_current_semester()
+    parts = code.split("-")
+    academic_year = f"{parts[0]}-{parts[1]}" if len(parts) == 3 else code
+    sem_num = parts[2] if len(parts) == 3 else ""
+    sem_name = _SEMESTER_NAMES.get(sem_num, "")
+
+    return json.dumps(
+        {
+            "semester_code": code,
+            "academic_year": academic_year,
+            "semester_name": sem_name,
+            "semester_number": sem_num,
+        },
+        ensure_ascii=False,
+    )
+
+
+# ---------------------------------------------------------------------------
+# 模块二：MCP Tool 自动挂载引擎 (Auto-Registrar)
+# ---------------------------------------------------------------------------
+
+# 不应暴露为 MCP Tool 的元命令
+_SKIP_COMMANDS: set[str] = {
+    "auth",
+    "test-adapter",
+    "version",
+    "fetch-list",
+    "schema",
+    "sop",
+    "mcp",
+}
+
+# Click 类型 → Python 类型注解映射
+_CLICK_TYPE_MAP: dict[str, type] = {
+    "integer": int,
+    "float": float,
+    "boolean": bool,
+    "string": str,
+}
+
+
+def _click_param_to_python_type(param: click.Parameter) -> type:
+    """将 Click 参数类型映射为 Python 类型注解。"""
+    return _CLICK_TYPE_MAP.get(param.type.name, str)
+
+
+def _build_tool_docstring(cmd: click.Command, params: list[click.Parameter]) -> str:
+    """从 Click 命令的 help 和参数 help 构建 MCP 工具的 docstring。"""
+    lines: list[str] = []
+
+    # 主描述
+    help_text = (cmd.help or "").strip()
+    if help_text:
+        lines.append(help_text)
+    else:
+        lines.append(f"执行 campus {cmd.name} 命令。")
+
+    # 如需认证的提示
+    lines.append("")
+    lines.append(
+        "如果返回包含 error 字段，说明操作失败，"
+        "请根据 error 类型提示用户（如 auth_required 需先登录）。"
+    )
+
+    # 参数文档
+    param_docs = [p for p in params if p.name not in ("json_output", "help")]
+    if param_docs:
+        lines.append("")
+        lines.append("Args:")
+        for p in param_docs:
+            desc = p.help or ""
+            lines.append(f"    {p.name}: {desc}")
+
+    return "\n".join(lines)
+
+
+def _invoke_cli_json(cmd_path: list[str], params: dict[str, Any]) -> str:
+    """在进程内以 --json 模式调用 Typer 命令并捕获 stdout。
+
+    通过 ``typer.testing.CliRunner`` 调用，避免启动子进程，
+    复用已有的 CLI 逻辑（含错误处理和 JSON 序列化）。
+    """
+    from typer.testing import CliRunner
+
+    from cli_campus.main import app as cli_app
+
+    runner = CliRunner()
+
+    # 构建参数列表: ["--json", "bus", "--route", "循环"]
+    args: list[str] = ["--json"] + cmd_path
+
+    for key, value in params.items():
+        if value is None:
+            continue
+        # 将 Python 参数名转回 CLI flag: semester → --semester
+        flag = f"--{key.replace('_', '-')}"
+        if isinstance(value, bool):
+            if value:
+                args.append(flag)
+        else:
+            args.extend([flag, str(value)])
+
+    result = runner.invoke(cli_app, args)
+
+    # CLI 的 JSON 模式已经处理了所有异常并输出 JSON
+    output = result.stdout.strip()
+    if not output:
         return json.dumps(
-            {
-                "error": "auth_required",
-                "message": (
-                    "凭证未找到或已失效，"
-                    "请用户先在终端运行 "
-                    "`campus auth login` 完成登录。"
-                ),
-            },
+            {"error": "empty_response", "message": "命令未返回数据"},
             ensure_ascii=False,
         )
-    except AuthFailedError as exc:
-        return json.dumps(
-            {"error": "auth_failed", "message": str(exc)},
-            ensure_ascii=False,
-        )
-    except AdapterError as exc:
-        return json.dumps(
-            {"error": "adapter_error", "message": str(exc)},
-            ensure_ascii=False,
-        )
+    return output
 
-    # --week 过滤
-    if week is not None:
-        events = [e for e in events if week in parse_weeks(e.content.get("weeks", ""))]
 
-    return _events_to_json(events)
+def _make_tool_function(
+    tool_name: str,
+    cmd_path: list[str],
+    params: list[click.Parameter],
+    docstring: str,
+) -> Any:
+    """动态生成一个具有正确类型注解的 async 包装函数。
+
+    FastMCP 通过 ``inspect.signature()`` 和 ``__annotations__``
+    来推导 JSON Schema，因此动态函数必须拥有完整的签名。
+
+    策略：使用 ``exec()`` 在局部命名空间中定义函数，
+    确保每个参数都有准确的类型注解和默认值。
+    """
+    # 收集有效参数（过滤掉全局 --json 和 --help）
+    valid_params = [
+        p for p in params if p.name and p.name not in ("json_output", "help")
+    ]
+
+    # 构建函数签名的参数列表
+    sig_parts: list[str] = []
+    annotations: dict[str, Any] = {}
+    for p in valid_params:
+        py_type = _click_param_to_python_type(p)
+        param_name = p.name or ""
+
+        # 确定默认值
+        if p.default is not None and p.default != ():
+            if isinstance(p.default, str):
+                default_repr = repr(p.default)
+            elif isinstance(p.default, bool):
+                default_repr = repr(p.default)
+            else:
+                default_repr = repr(p.default)
+        else:
+            # 对 Optional 参数赋 None 默认值
+            default_repr = "None"
+            # 用 Optional 包裹
+            py_type = Optional[py_type]  # type: ignore[assignment]
+
+        sig_parts.append(f"{param_name} = {default_repr}")
+        annotations[param_name] = py_type
+
+    sig_str = ", ".join(sig_parts)
+    # 闭包捕获: cmd_path
+    captured_cmd_path = list(cmd_path)
+
+    func_code = textwrap.dedent(f"""\
+        async def {tool_name}({sig_str}) -> str:
+            # 收集非 None 参数
+            _locals = dict(locals())
+            _params = {{k: v for k, v in _locals.items() if v is not None}}
+            return _invoke(_cmd_path, _params)
+    """)
+
+    local_ns: dict[str, Any] = {
+        "_invoke": _invoke_cli_json,
+        "_cmd_path": captured_cmd_path,
+    }
+    exec(func_code, local_ns)  # noqa: S102
+
+    func = local_ns[tool_name]
+    func.__doc__ = docstring
+    func.__annotations__ = {**annotations, "return": str}
+    func.__module__ = __name__
+
+    return func
+
+
+def _register_command(
+    name: str,
+    cmd: click.Command,
+    *,
+    cmd_path: list[str] | None = None,
+    prefix: str = "campus",
+) -> None:
+    """将单个 Click 命令动态注册为 MCP Tool。"""
+    path = cmd_path or [name]
+    tool_name = f"{prefix}_{'_'.join(path)}".replace("-", "_")
+
+    # 提取参数
+    params: list[click.Parameter] = cmd.params
+
+    # 构建 docstring
+    docstring = _build_tool_docstring(cmd, params)
+
+    # 动态生成函数
+    func = _make_tool_function(tool_name, path, params, docstring)
+
+    # 注册到 FastMCP
+    mcp.tool()(func)
+
+    logger.debug("Auto-registered MCP tool: %s → %s", tool_name, path)
+
+
+def auto_register_tools() -> int:
+    """遍历 Typer 命令树，将业务命令自动注册为 MCP Tools。
+
+    Returns:
+        成功注册的工具数量。
+    """
+    from cli_campus.main import app as cli_app
+
+    cli = typer.main.get_command(cli_app)
+    count = 0
+
+    for name, cmd in cli.commands.items():
+        if name in _SKIP_COMMANDS:
+            continue
+
+        if isinstance(cmd, click.Group):
+            # 子命令组 (如 venue) — 为每个子命令生成独立 tool
+            for sub_name, sub_cmd in cmd.commands.items():
+                _register_command(
+                    f"{name}_{sub_name}",
+                    sub_cmd,
+                    cmd_path=[name, sub_name],
+                )
+                count += 1
+        else:
+            _register_command(name, cmd, cmd_path=[name])
+            count += 1
+
+    logger.info("Auto-registered %d MCP tools from CLI commands", count)
+    return count
 
 
 # ---------------------------------------------------------------------------
@@ -166,27 +397,79 @@ async def bus_notes() -> str:
 
 
 @mcp.prompt()
+async def campus_assistant_system_prompt() -> str:
+    """校园助手系统提示词 — 指导大模型正确使用 CLI-Campus 工具。
+
+    建立标准 SOP: 查时间 → 算参数 → 调业务工具。
+    """
+    return (
+        "你是一个东南大学校园助手，可以通过 CLI-Campus 工具集查询校园信息。\n"
+        "\n"
+        "## 核心工作流 (SOP)\n"
+        "\n"
+        "处理任何校园查询请求时，请严格遵循以下步骤：\n"
+        "\n"
+        "### Step 1: 获取时间锚点\n"
+        "- 调用 `get_current_time` 获取当前日期、星期几。\n"
+        '- 如果用户说"今天"、"明天"、"这周"等相对时间，\n'
+        "  必须先确定绝对日期再进行后续查询。\n"
+        "\n"
+        "### Step 2: 获取学期基准 (如需)\n"
+        "- 如果要查课表、成绩、考试，先调用 `get_semester_info`\n"
+        "  获取当前学期代码 (如 2025-2026-3)。\n"
+        "- 将学期代码作为参数传给后续业务工具。\n"
+        "\n"
+        "### Step 3: 调用业务工具\n"
+        "- 根据用户意图选择对应的业务工具:\n"
+        "  - 校车: `campus_bus` (无需登录)\n"
+        "  - 课表: `campus_course` (需登录)\n"
+        "  - 成绩: `campus_grade` (需登录)\n"
+        "  - 考试: `campus_exam` (需登录)\n"
+        "  - 一卡通: `campus_card` (需登录)\n"
+        "  - 场馆: `campus_venue_*` 系列 (需登录)\n"
+        "\n"
+        "### 错误处理\n"
+        "- 如果工具返回 `auth_required` 错误，友善提醒用户先在终端运行\n"
+        "  `campus auth login` 完成登录。\n"
+        "- 如果返回 `adapter_error`，告知用户系统暂时不可用。\n"
+        "\n"
+        "### 注意事项\n"
+        "- 所有工具返回 JSON 格式数据，请据此生成人类可读的回复。\n"
+        "- 不要编造任何数据，一切以工具返回结果为准。\n"
+        "- 校车数据为静态数据，无需登录即可查询。\n"
+    )
+
+
+@mcp.prompt()
 async def campus_morning_briefing() -> str:
     """生成校园早间速报的预设提示词。
 
-    包含系统级指令，引导大模型使用 get_course_schedule 和 get_campus_bus 工具
-    为用户生成一份当日校园简报。
+    包含系统级指令，引导大模型使用工具为用户生成一份当日校园简报。
     """
     return (
         "你是一个东南大学校园助手。请按照以下步骤为用户生成今天的校园早报：\n"
         "\n"
-        "1. 使用 get_course_schedule 工具查询今天的课程安排。\n"
+        "1. 使用 get_current_time 工具获取今天的准确日期和星期几。\n"
+        "2. 使用 get_semester_info 工具获取当前学期代码。\n"
+        "3. 使用 campus_course 工具查询今天的课程安排。\n"
         "   - 如果返回中包含 auth_required 错误，友善地提醒用户先在终端运行 "
         "`campus auth login` 登录。\n"
-        "2. 使用 get_campus_bus 工具查询校车时刻"
+        "4. 使用 campus_bus 工具查询校车时刻"
         "（建议筛选 schedule_type='workday'）。\n"
-        "3. 综合以上信息，用简洁友好的中文生成一份早间速报，包括：\n"
+        "5. 综合以上信息，用简洁友好的中文生成一份早间速报，包括：\n"
         "   - 今天有哪些课程，上课时间和地点\n"
         "   - 推荐的通勤校车班次（根据第一节课时间推荐合适的出发班次）\n"
         "   - 如果有晚课，也提示返程校车班次\n"
         "\n"
         "请确保信息准确，不要编造任何课程或校车数据，一切以工具返回结果为准。"
     )
+
+
+# ---------------------------------------------------------------------------
+# 启动时自动注册
+# ---------------------------------------------------------------------------
+
+auto_register_tools()
 
 
 # ---------------------------------------------------------------------------

@@ -183,7 +183,18 @@ extract:
 - [x] 实现 MCP Prompt: `campus_morning_briefing`（早间速报预设提示词）
 - [x] 注入 Typer CLI 入口: `campus mcp` 命令（stdio 模式启动）
 - [x] 完整类型注解 + Docstring（FastMCP 自动生成 JSON Schema）
-- [x] 236 项既有测试全部通过，零破坏性变更
+
+### MCP Auto-Registrar (自动挂载引擎)
+
+- [x] 实现 Context-Aware 基础感知工具 (`get_current_time`, `get_semester_info`)
+- [x] 实现 Auto-Registrar 引擎：自动反射 Typer 命令树，动态注册 MCP Tools
+- [x] 解决动态函数类型推导难题：`exec()` + `__annotations__` + `__signature__`
+- [x] 实现进程内 CLI 调用 (`_invoke_cli_json`)：通过 CliRunner 以 --json 模式调用
+- [x] 实现 `campus_assistant_system_prompt` 提示词：建立查时间→算参数→调工具 SOP
+- [x] 彻底消灭手动 `@mcp.tool()` 业务包裹函数，实现零维护成本
+- [x] 自动注册全部业务工具：bus, course, grade, exam, card, venue_*, fetch
+- [x] 31 项自动挂载引擎专项测试全部通过
+- [x] 267 项全量测试通过，零破坏性变更
 
 ---
 
