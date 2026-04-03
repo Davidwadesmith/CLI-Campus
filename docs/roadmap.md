@@ -174,6 +174,17 @@ extract:
 - [x] 编写交互式 AI 预约助手 (`scripts/venue_assistant.py`)
 - [x] 25 项单元测试 + 真实网络集成测试通过
 
+### MCP Server (Model Context Protocol)
+
+- [x] 添加 `mcp` 依赖（FastMCP）
+- [x] 实现 MCP Server 核心文件 (`cli_campus/mcp_server.py`)
+- [x] 实现 MCP Tools: `get_campus_bus`、`get_course_schedule`（直接调用 Adapter 层）
+- [x] 实现 MCP Resource: `campus://info/bus-notes`（校车特殊规则上下文）
+- [x] 实现 MCP Prompt: `campus_morning_briefing`（早间速报预设提示词）
+- [x] 注入 Typer CLI 入口: `campus mcp` 命令（stdio 模式启动）
+- [x] 完整类型注解 + Docstring（FastMCP 自动生成 JSON Schema）
+- [x] 236 项既有测试全部通过，零破坏性变更
+
 ---
 
 ## 阶段四：生态繁荣与多校共建 (Phase 4: Open Ecosystem) — Month 3+

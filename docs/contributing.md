@@ -157,6 +157,7 @@ cli-campus/
 ├── cli_campus/                 # 核心代码包
 │   ├── __init__.py             # 包初始化 + 版本号
 │   ├── main.py                 # Typer CLI 入口（严禁包含业务逻辑）
+│   ├── mcp_server.py           # MCP Server 入口 (FastMCP/stdio)
 │   ├── core/                   # 核心协议层（不允许包含具体学校逻辑）
 │   │   ├── __init__.py
 │   │   ├── models.py           # Pydantic Standard Types
@@ -182,7 +183,7 @@ cli-campus/
 ├── configs/declarative/        # YAML 声明式适配器配置
 ├── sops/                       # SOP 宏指令配置 (Jinja2 模板)
 ├── scripts/                    # 工具脚本 (M2M 联调测试等)
-├── tests/                      # pytest 测试 (211 tests)
+├── tests/                      # pytest 测试 (236 tests)
 │   ├── test_models.py          # 模型测试
 │   ├── test_adapters.py        # 适配器测试
 │   ├── test_cli.py             # CLI 命令测试
@@ -211,6 +212,7 @@ cli-campus/
 | `core/` | Pydantic 模型、抽象基类、配置、引擎 | 具体学校逻辑、Rich 渲染 |
 | `adapters/` | 网络请求、数据清洗、Session 管理 | Rich 渲染逻辑、CLI 参数解析 |
 | `main.py` | Typer 命令定义、调用 Adapter、输出格式化 | 直接发起网络请求 |
+| `mcp_server.py` | MCP Tools/Resources/Prompts、调用 Adapter | Typer 解析逻辑、Rich 渲染 |
 | `tests/` | pytest 测试用例 | 生产代码 |
 
 ---

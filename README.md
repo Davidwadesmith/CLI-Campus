@@ -63,12 +63,66 @@ campus venue cancel <booking_id>     # 取消预约
 python scripts/venue_assistant.py    # 启动 AI 助手
 ```
 
+## MCP Server 使用指南
+
+CLI-Campus 内置了标准的 [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) Server，可供 Claude Desktop 或任何支持 MCP 的 AI Agent 直接调用校园数据能力。
+
+### 前置条件
+
+1. **完成安装**：按“快速开始”节完成 `uv sync` 安装依赖。
+2. **完成登录**（可选）：如需查课表等需要认证的功能，先在终端运行 `campus auth login` 完成 CAS 登录。校车时刻表为静态数据，无需登录即可使用。
+
+### 启动 MCP Server
+
+```bash
+campus mcp
+```
+
+该命令以 stdio 模式启动 MCP Server，持续监听 Agent 请求。
+
+### 配置 Claude Desktop
+
+在 Claude Desktop 配置文件 `claude_desktop_config.json` 中添加：
+
+```json
+{
+  "mcpServers": {
+    "cli-campus": {
+      "command": "campus",
+      "args": ["mcp"]
+    }
+  }
+}
+```
+
+> 配置文件位置：
+> - macOS: `~/Library/Application Support/Claude/claude_desktop_config.json`
+> - Windows: `%APPDATA%\Claude\claude_desktop_config.json`
+
+### 可用能力
+
+| 类别 | 名称 | 说明 |
+|------|------|------|
+| **Tool** | `get_campus_bus` | 查询校车时刻表，支持按线路、时刻表类型筛选 |
+| **Tool** | `get_course_schedule` | 查询课程表，支持学期和教学周过滤 |
+| **Resource** | `campus://info/bus-notes` | 校车特殊规则说明（节假日、短駁车等上下文） |
+| **Prompt** | `campus_morning_briefing` | 早间速报预设提示词，引导 Agent 组合课表+校车生成当日简报 |
+
+### 示例对话
+
+配置完成后，在 Claude Desktop 中可以直接说：
+
+- “给我查一下今天的课表”
+- “最近一班去四牌楼的校车几点发车？”
+- “帮我生成今天的校园早报”（使用 `campus_morning_briefing` prompt）
+
 ## 项目结构
 
 ```
 cli-campus/
 ├── cli_campus/              # 核心代码包
 │   ├── main.py              # CLI 入口 (Typer)
+│   ├── mcp_server.py        # MCP Server 入口 (FastMCP/stdio)
 │   ├── core/                # 核心协议层
 │   │   ├── models.py        # Pydantic 数据模型
 │   │   ├── interfaces.py    # Adapter 抽象基类
@@ -108,7 +162,7 @@ cli-campus/
 | [路线图](docs/roadmap.md) | Phase 0~4 详细执行时间表 |
 | [YAML 引擎](docs/yaml-engine.md) | 声明式解析引擎设计文档 |
 | [SOP 设计](docs/sop-design.md) | 宏指令与原子化组合设计 |
-| [Agent 集成](docs/agent-native.md) | Function Calling Schema 与 M2M 联调 |
+| [Agent 集成](docs/agent-native.md) | Function Calling Schema、MCP Server 与 M2M 联调 |
 
 ## 开发
 
@@ -141,6 +195,7 @@ CLI-Campus 站在以下优秀开源项目的肩膀上：
 | [Beautiful Soup](https://www.crummy.com/software/BeautifulSoup/) | HTML 解析与数据提取 |
 | [Jinja2](https://github.com/pallets/jinja) | 模板引擎（SOP 输出渲染） |
 | [OpenAI Python](https://github.com/openai/openai-python) | LLM Function Calling 集成 |
+| [MCP](https://github.com/modelcontextprotocol/python-sdk) | Model Context Protocol Server SDK |
 
 开发工具链：[Ruff](https://github.com/astral-sh/ruff)（Lint + Format）· [pytest](https://github.com/pytest-dev/pytest) · [Mypy](https://github.com/python/mypy) · [uv](https://github.com/astral-sh/uv)（包管理）
 

@@ -248,20 +248,69 @@ for event in events:
     print(event.model_dump_json())
 ```
 
-### 4.3 作为 MCP Server（未来）
+### 4.3 作为 MCP Server（已实现）
 
-将 CLI-Campus 包装为 Model Context Protocol Server，让任何支持 MCP 的 Agent 直接调用：
+CLI-Campus 已实现标准的 Model Context Protocol Server，让任何支持 MCP 的 Agent（如 Claude Desktop）直接调用校园工具：
 
 ```python
-# 未来实现
-from mcp.server import Server
-server = Server("cli-campus")
+# cli_campus/mcp_server.py
+from mcp.server.fastmcp import FastMCP
+mcp = FastMCP("CLI-Campus")
 
-@server.tool("campus_bus")
-async def get_bus(from_stop: str, to_stop: str):
-    adapter = BusAdapter(config={})
-    return await adapter.fetch(from_stop=from_stop, to_stop=to_stop)
+@mcp.tool()
+async def get_campus_bus(route: str = "", schedule_type: str = "") -> str:
+    """查询校车时刻表。"""
+    from cli_campus.adapters.bus_adapter import BusAdapter
+    adapter = BusAdapter()
+    events = await adapter.fetch(route=route, schedule_type=schedule_type)
+    return _events_to_json(events)
+
+@mcp.tool()
+async def get_course_schedule(semester: str = "", week: int = None) -> str:
+    """查询本学期课程表。"""
+    from cli_campus.adapters.course_adapter import CourseAdapter
+    adapter = CourseAdapter(config={"semester": semester} if semester else None)
+    events = await adapter.fetch()
+    return _events_to_json(events)
 ```
+
+#### 启动 MCP Server
+
+```bash
+# 通过 CLI 命令以 stdio 模式启动
+campus mcp
+```
+
+#### 已注册的 MCP 能力
+
+| 类别 | 名称 | 说明 |
+|------|------|------|
+| **Tool** | `get_campus_bus` | 查询校车时刻表，支持线路和类型筛选 |
+| **Tool** | `get_course_schedule` | 查询课程表，支持学期和教学周过滤 |
+| **Resource** | `campus://info/bus-notes` | 校车特殊规则说明（节假日、短驳车等上下文） |
+| **Prompt** | `campus_morning_briefing` | 早间速报预设提示词（引导 Agent 生成当日简报） |
+
+#### Claude Desktop 配置示例
+
+在 `claude_desktop_config.json` 中添加：
+
+```json
+{
+  "mcpServers": {
+    "cli-campus": {
+      "command": "campus",
+      "args": ["mcp"]
+    }
+  }
+}
+```
+
+#### 设计要点
+
+- **直接复用 Adapter 层**：MCP Tool 绕过 Typer 解析逻辑，直接调用底层 Adapter，零冗余
+- **复用 OS Keyring 鉴权**：MCP 基于 stdio 本地运行，自动继承用户已保存的 CAS 凭证
+- **友好的错误降级**：当凭证缺失时，Tool 返回结构化错误提示而非抛出异常
+- **完整的类型注解与 Docstring**：FastMCP 据此自动生成 JSON Schema，Agent 可自动发现能力
 
 ---
 
@@ -271,4 +320,4 @@ async def get_bus(from_stop: str, to_stop: str):
 - **输出过滤**：`--json` 模式下不输出任何 Rich 渲染的颜色控制字符
 - **速率限制**：Agent 高频调用时，Adapter 层内置请求节流，避免触发学校反爬
 
-Tool Schema 自动生成器与 M2M 联调计划在 **Phase 3 (Week 7~8)** 正式实现。
+Tool Schema 自动生成器与 M2M 联调已在 **Phase 3** 实现。MCP Server 已于 Phase 3 落地，支持 `campus mcp` 命令以 stdio 模式启动。
