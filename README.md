@@ -124,6 +124,8 @@ campus-mcp
 
 MCP Server 采用 **自动挂载引擎 (Auto-Discovery Tool Factory)**，会在启动时自动反射 Typer 命令树，将所有业务命令动态注册为 MCP Tools。新增 CLI 命令后无需手动修改 `mcp_server.py`。
 
+> **Agent-Friendly 输出**: MCP 工具返回经过精简的 JSON — 自动剥离 `raw_data`、`id`、`source` 等内部信封字段，仅保留 `title` + 业务数据，大幅降低 LLM token 消耗。
+
 #### Context-Aware 基础工具
 
 | 类别 | 名称 | 说明 |

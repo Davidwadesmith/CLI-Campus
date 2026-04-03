@@ -229,9 +229,8 @@ class TestInvokeCLIJson:
         data = json.loads(result)
         assert isinstance(data, list)
         for item in data:
-            assert "循环" in item.get("title", "") or "循环" in json.dumps(
-                item.get("content", {}), ensure_ascii=False
-            )
+            combined = json.dumps(item, ensure_ascii=False)
+            assert "循环" in combined
 
     def test_empty_params_ignored(self) -> None:
         """None 参数应被忽略而非传递。"""
@@ -323,3 +322,56 @@ class TestMakeToolFunction:
 
         func = _make_tool_function("test_tool", ["bus"], [], "Test")
         assert func.__annotations__["return"] is str
+
+
+class TestSlimForAgent:
+    """_slim_for_agent 数据精简测试。"""
+
+    def test_strips_raw_data_and_envelope(self) -> None:
+        """CampusEvent 格式应去除 raw_data、id、source、category、timestamp。"""
+        from cli_campus.mcp_server import _slim_for_agent
+
+        raw = json.dumps(
+            [
+                {
+                    "id": "test:1",
+                    "source": "mock",
+                    "category": "bus",
+                    "title": "Test Event",
+                    "content": {"name": "foo", "value": 42},
+                    "raw_data": {"INTERNAL_KEY": "secret"},
+                    "timestamp": "2026-01-01T00:00:00",
+                }
+            ]
+        )
+        result = json.loads(_slim_for_agent(raw))
+        assert len(result) == 1
+        item = result[0]
+        assert item["title"] == "Test Event"
+        assert item["name"] == "foo"
+        assert item["value"] == 42
+        assert "raw_data" not in item
+        assert "id" not in item
+        assert "source" not in item
+        assert "category" not in item
+        assert "timestamp" not in item
+
+    def test_passthrough_non_campus_event(self) -> None:
+        """非 CampusEvent 格式（如 VenueInfo）应原样透传。"""
+        from cli_campus.mcp_server import _slim_for_agent
+
+        raw = json.dumps([{"venue_id": "abc", "name": "场馆A"}])
+        assert _slim_for_agent(raw) == raw
+
+    def test_passthrough_error_object(self) -> None:
+        """错误对象应原样透传。"""
+        from cli_campus.mcp_server import _slim_for_agent
+
+        raw = json.dumps({"error": "auth_required", "message": "请先登录"})
+        assert _slim_for_agent(raw) == raw
+
+    def test_passthrough_invalid_json(self) -> None:
+        """非 JSON 字符串应原样透传。"""
+        from cli_campus.mcp_server import _slim_for_agent
+
+        assert _slim_for_agent("not json") == "not json"

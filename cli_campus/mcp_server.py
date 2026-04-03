@@ -193,11 +193,47 @@ def _build_tool_docstring(cmd: click.Command, params: list[click.Parameter]) -> 
     return "\n".join(lines)
 
 
+def _slim_for_agent(raw: str) -> str:
+    """精简 CLI JSON 输出，去除对 LLM 无用的冗余字段。
+
+    CampusEvent 信封中的 ``raw_data``、``id``、``source``、``category``、
+    ``timestamp`` 都是内部/调试字段，对大模型推理无价值且严重膨胀 token 消耗。
+    此函数将 CampusEvent 列表压缩为仅保留 ``title`` + ``content`` 的精简格式。
+
+    对于非 CampusEvent 格式的数据（如 venue list 返回的 VenueInfo 数组、
+    错误响应等）直接透传。
+    """
+    try:
+        data = json.loads(raw)
+    except (json.JSONDecodeError, ValueError):
+        return raw
+
+    # 仅处理列表格式
+    if not isinstance(data, list) or not data:
+        return raw
+
+    first = data[0]
+
+    # 判断是否为 CampusEvent 信封格式 (含 title + content + raw_data)
+    if isinstance(first, dict) and "title" in first and "content" in first:
+        slim = []
+        for item in data:
+            entry: dict[str, Any] = {"title": item.get("title", "")}
+            content = item.get("content")
+            if isinstance(content, dict):
+                entry.update(content)
+            slim.append(entry)
+        return json.dumps(slim, ensure_ascii=False)
+
+    return raw
+
+
 def _invoke_cli_json(cmd_path: list[str], params: dict[str, Any]) -> str:
     """在进程内以 --json 模式调用 Typer 命令并捕获 stdout。
 
     通过 ``typer.testing.CliRunner`` 调用，避免启动子进程，
     复用已有的 CLI 逻辑（含错误处理和 JSON 序列化）。
+    返回前会经过 ``_slim_for_agent`` 精简，去除 ``raw_data`` 等冗余字段。
     """
     from typer.testing import CliRunner
 
@@ -224,7 +260,7 @@ def _invoke_cli_json(cmd_path: list[str], params: dict[str, Any]) -> str:
     # CLI 的 JSON 模式已经处理了所有异常并输出 JSON
     output = result.stdout.strip()
     if output:
-        return output
+        return _slim_for_agent(output)
 
     # stdout 为空 — 尝试从异常中提取信息
     if result.exception:

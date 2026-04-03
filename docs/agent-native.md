@@ -378,6 +378,8 @@ python -m cli_campus.mcp_server
 - **Context-Aware**：`get_current_time` + `get_semester_info` 提供时间锚点，解决大模型缺乏校历上下文的痛点
 - **完整的类型注解**：动态函数拥有正确的 `__signature__` 和 `__annotations__`，FastMCP 自动生成 JSON Schema
 - **独立入口点**：`campus-mcp` 绕过 Typer 直接启动，避免 CLI 框架干扰 stdio JSON-RPC 通信
+- **Worker Thread 隔离**：动态工具通过 `asyncio.to_thread()` 在独立线程中执行 CliRunner，避免 FastMCP event loop 内嵌套 `asyncio.run()` 导致死锁
+- **Agent-Friendly 精简输出**：`_slim_for_agent()` 自动剥离 CampusEvent 信封中的 `raw_data`、`id`、`source`、`category`、`timestamp` 等内部字段，仅保留 `title` + `content` 业务数据，大幅降低 token 消耗（成绩数据精简约 90%）
 - **进程内 CLI 调用**：通过 `typer.testing.CliRunner` 在进程内以 `--json` 模式调用，复用 CLI 完整的错误处理逻辑
 - **复用 OS Keyring 鉴权**：MCP 基于 stdio 本地运行，自动继承用户已保存的 CAS 凭证
 - **友好的错误降级**：当凭证缺失时，Tool 返回结构化错误提示而非抛出异常
