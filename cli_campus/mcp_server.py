@@ -17,6 +17,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import textwrap
@@ -222,12 +223,22 @@ def _invoke_cli_json(cmd_path: list[str], params: dict[str, Any]) -> str:
 
     # CLI 的 JSON 模式已经处理了所有异常并输出 JSON
     output = result.stdout.strip()
-    if not output:
+    if output:
+        return output
+
+    # stdout 为空 — 尝试从异常中提取信息
+    if result.exception:
         return json.dumps(
-            {"error": "empty_response", "message": "命令未返回数据"},
+            {
+                "error": "cli_error",
+                "message": str(result.exception),
+            },
             ensure_ascii=False,
         )
-    return output
+    return json.dumps(
+        {"error": "empty_response", "message": "命令未返回数据"},
+        ensure_ascii=False,
+    )
 
 
 def _make_tool_function(
@@ -282,11 +293,12 @@ def _make_tool_function(
             # 收集非 None 参数
             _locals = dict(locals())
             _params = {{k: v for k, v in _locals.items() if v is not None}}
-            return _invoke(_cmd_path, _params)
+            return await _to_thread(_invoke, _cmd_path, _params)
     """)
 
     local_ns: dict[str, Any] = {
         "_invoke": _invoke_cli_json,
+        "_to_thread": asyncio.to_thread,
         "_cmd_path": captured_cmd_path,
     }
     exec(func_code, local_ns)  # noqa: S102

@@ -242,6 +242,32 @@ class TestInvokeCLIJson:
         data = json.loads(result)
         assert isinstance(data, list)
 
+    def test_bus_invocation_from_async_context(self) -> None:
+        """从 async 上下文（模拟 MCP 运行时）调用应正常返回数据。
+
+        这是 MCP 工具的实际调用路径：FastMCP 在 event loop 中调用
+        async 工具函数 → asyncio.to_thread → _invoke_cli_json。
+        """
+        import asyncio
+
+        from cli_campus.mcp_server import _invoke_cli_json
+
+        async def _run() -> str:
+            return await asyncio.to_thread(_invoke_cli_json, ["bus"], {})
+
+        result = asyncio.run(_run())
+        data = json.loads(result)
+        assert isinstance(data, list)
+        assert len(data) > 0
+
+    def test_cli_error_returns_structured_json(self) -> None:
+        """CLI 异常时应返回结构化的 JSON 错误而非空响应。"""
+        from cli_campus.mcp_server import _invoke_cli_json
+
+        result = _invoke_cli_json(["nonexistent-command"], {})
+        data = json.loads(result)
+        assert "error" in data
+
 
 class TestMCPResources:
     """MCP Resources 测试。"""
