@@ -10,6 +10,9 @@ from __future__ import annotations
 import asyncio
 import json
 from datetime import datetime
+from pathlib import Path
+
+import pytest
 
 
 class TestGetCurrentTime:
@@ -613,8 +616,18 @@ class TestEnforceSizeLimit:
         assert isinstance(data, list)
 
 
+_PDF_FILE = (
+    Path(__file__).parent.parent
+    / "cli_campus"
+    / "data"
+    / "resources"
+    / "东南大学大学生手册2025.pdf"
+)
+
+
+@pytest.mark.skipif(not _PDF_FILE.exists(), reason="PDF 不在仓库中 (.gitignore)")
 class TestPdfResourceLoading:
-    """静态资源 PDF 加载测试。"""
+    """静态资源 PDF 加载测试（仅在本地 PDF 存在时运行）。"""
 
     def test_scanned_pdf_has_fallback_text(self) -> None:
         """扫描版 PDF 应生成占位说明而非空文本。"""

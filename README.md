@@ -201,7 +201,7 @@ cli-campus/
 │   └── data/
 │       ├── bus_schedule.json# 校车时刻表数据 (总务处官方)
 │       └── resources/       # 静态参考资料 (自动注册为 MCP Resource，支持 .md / .pdf)
-│           └── student_handbook.md  # 学生手册摘要版
+│           └── student_handbook.md  # 学生手册 (OCR 全文版)
 ├── configs/declarative/     # YAML 声明式适配器配置
 ├── sops/                    # SOP 宏指令配置
 ├── scripts/                 # 工具脚本 (M2M 联调测试等)
