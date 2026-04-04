@@ -223,14 +223,9 @@ class TestMakeBooking:
             return_value=_mock_gql_response(
                 {
                     "saveAppointmentInformation": {
-                        "id": "booking-123",
-                        "resources_name": "九龙湖一号场地",
-                        "resources_type_name": "羽毛球场",
-                        "appointment_date": 1751299200000,
-                        "start_time": "09:00",
-                        "end_time": "10:00",
-                        "state": 1,
-                        "event": "运动健身",
+                        "appointmentId": "booking-123",
+                        "errcode": "0",
+                        "msg": "预约成功",
                     }
                 }
             )
@@ -243,9 +238,9 @@ class TestMakeBooking:
 
         assert isinstance(booking, BookingInfo)
         assert booking.booking_id == "booking-123"
-        assert booking.venue_name == "九龙湖一号场地"
         assert booking.start_time == "09:00"
         assert booking.end_time == "10:00"
+        assert booking.date == "2025-07-01"
 
     def test_make_booking_failed(self) -> None:
         """预约失败 (GraphQL 错误) 抛出 AdapterError。"""
@@ -258,6 +253,26 @@ class TestMakeBooking:
         adapter._client = mock_client
 
         with pytest.raises(AdapterError, match="该时段已被预约"):
+            asyncio.run(adapter.make_booking("uuid-1", "2025-07-01", "09:00", "10:00"))
+
+    def test_make_booking_errcode_nonzero(self) -> None:
+        """服务端返回 errcode 非零时抛出 AdapterError。"""
+        adapter = _make_adapter()
+        mock_client = AsyncMock()
+        mock_client.post = AsyncMock(
+            return_value=_mock_gql_response(
+                {
+                    "saveAppointmentInformation": {
+                        "appointmentId": "",
+                        "errcode": "1001",
+                        "msg": "该时间段预约已满",
+                    }
+                }
+            )
+        )
+        adapter._client = mock_client
+
+        with pytest.raises(AdapterError, match="该时间段预约已满"):
             asyncio.run(adapter.make_booking("uuid-1", "2025-07-01", "09:00", "10:00"))
 
 
@@ -274,8 +289,8 @@ class TestCancelBooking:
             return_value=_mock_gql_response(
                 {
                     "updateAppointmentInformationState": {
-                        "id": "booking-123",
-                        "state": "2",
+                        "errcode": "0",
+                        "msg": "取消成功",
                     }
                 }
             )

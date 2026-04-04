@@ -303,8 +303,7 @@ class VenueAdapter(BaseCampusAdapter):
 
         mutation = """mutation($model: InputAppointmentInformation!) {
           saveAppointmentInformation(model: $model) {
-            id resources_name resources_type_name
-            appointment_date start_time end_time state event
+            appointmentId errcode msg
           }
         }"""
         model: dict[str, Any] = {
@@ -319,24 +318,19 @@ class VenueAdapter(BaseCampusAdapter):
         if not result:
             raise AdapterError("预约提交失败，服务端未返回预约信息")
 
-        # 解析 appointment_date (可能是时间戳)
-        appt_date = result.get("appointment_date")
-        if isinstance(appt_date, (int, float)):
-            date_str = datetime.datetime.fromtimestamp(appt_date / 1000).strftime(
-                "%Y-%m-%d"
-            )
-        else:
-            date_str = str(appt_date or date)
+        errcode = result.get("errcode", "")
+        if errcode and errcode != "0":
+            raise AdapterError(f"预约失败: {result.get('msg', errcode)}")
 
         return BookingInfo(
-            booking_id=result.get("id", ""),
-            venue_name=result.get("resources_name", ""),
-            venue_type=result.get("resources_type_name", ""),
-            date=date_str,
-            start_time=result.get("start_time", ""),
-            end_time=result.get("end_time", ""),
-            state=result.get("state", 0) or 0,
-            event=result.get("event", ""),
+            booking_id=result.get("appointmentId", ""),
+            venue_name=venue_id,
+            venue_type="",
+            date=date,
+            start_time=start_time,
+            end_time=end_time,
+            state=0,
+            event=event,
         )
 
     # ------------------------------------------------------------------
@@ -353,22 +347,21 @@ class VenueAdapter(BaseCampusAdapter):
         Returns:
             True 表示取消成功。
         """
-        mutation = """mutation($id: ID!, $state: String!) {
-          updateAppointmentInformationState(id: $id, state: $state, reason: $reason) {
-            id state
-          }
-        }"""
-        # 使用直接的变量替换方式
         mutation = """mutation($id: ID!, $state: String!, $reason: String) {
           updateAppointmentInformationState(id: $id, state: $state, reason: $reason) {
-            id state
+            errcode msg
           }
         }"""
         data = await self._gql(
             mutation, {"id": booking_id, "state": "2", "reason": reason}
         )
         result = data.get("updateAppointmentInformationState")
-        return result is not None
+        if not result:
+            return False
+        errcode = result.get("errcode", "")
+        if errcode and errcode != "0":
+            raise AdapterError(f"取消失败: {result.get('msg', errcode)}")
+        return True
 
     # ------------------------------------------------------------------
     # 公共 API — 我的预约
