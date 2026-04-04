@@ -268,8 +268,14 @@ CLI-Campus 实现了基于 **MCP Auto-Registrar** 的自动挂载引擎，在启
 │  ├── _make_tool_function()  → 动态生成带类型注解的 async 函数  │
 │  └── _invoke_cli_json()     → 进程内 --json 模式调用 CLI     │
 │                                                             │
+│  模块三: 静态资源系统                                         │
+│  ├── auto_register_resources() → 扫描 data/resources/*.md    │
+│  ├── campus://resources/{name} → 逐篇读取参考文档             │
+│  └── search_resource()         → 按关键词检索段落             │
+│                                                             │
 │  Resources & Prompts                                        │
 │  ├── campus://info/bus-notes                                │
+│  ├── campus://resources (索引) / campus://resources/{name}   │
 │  ├── campus_assistant_system_prompt (查时间→算参数→调工具)    │
 │  └── campus_morning_briefing                                │
 └─────────────────────────────────────────────────────────────┘
@@ -326,6 +332,9 @@ Step 4: 将 JSON 结果整理为人类可读的回复
 | **Tool** | `campus_venue_cancel` | 取消预约 |
 | **Tool** | `campus_fetch` | 运行 YAML 声明式适配器 |
 | **Resource** | `campus://info/bus-notes` | 校车特殊规则说明（节假日、短驳车等上下文） |
+| **Resource** | `campus://resources` | 校园参考资料索引（列出所有可用文档） |
+| **Resource** | `campus://resources/{name}` | 具体参考资料（如学生手册） |
+| **Tool** | `search_resource` | 在参考资料中按关键词搜索（避免全文填入上下文） |
 | **Prompt** | `campus_assistant_system_prompt` | 系统提示词 (查时间→算参数→调工具 SOP) |
 | **Prompt** | `campus_morning_briefing` | 早间速报预设提示词 |
 
@@ -379,7 +388,14 @@ python -m cli_campus.mcp_server
 - **完整的类型注解**：动态函数拥有正确的 `__signature__` 和 `__annotations__`，FastMCP 自动生成 JSON Schema
 - **独立入口点**：`campus-mcp` 绕过 Typer 直接启动，避免 CLI 框架干扰 stdio JSON-RPC 通信
 - **Worker Thread 隔离**：动态工具通过 `asyncio.to_thread()` 在独立线程中执行 CliRunner，避免 FastMCP event loop 内嵌套 `asyncio.run()` 导致死锁
-- **Agent-Friendly 精简输出**：`_slim_for_agent()` 自动剥离 CampusEvent 信封中的 `raw_data`、`id`、`source`、`category`、`timestamp` 等内部字段，仅保留 `title` + `content` 业务数据，大幅降低 token 消耗（成绩数据精简约 90%）
+- **硬性体积上限**：`_MAX_RESPONSE_KB = 16` — 任何 MCP Tool 的单次返回不得超过 16 KB。超出部分自动截断并附加 `truncated` 标记，防止 LLM 上下文爆炸
+- **Agent-Friendly 精简输出**：`_slim_for_agent()` 多层精简策略：
+  - **CampusEvent**：剥离外层信封，仅保留 `content` 业务字典
+  - **Venue Slots**：`_slim_venue_slots()` 按场馆分组去重（336 条 × 重复 venue 对象 → 按场馆聚合，136 KB → 22 KB）
+  - **通用列表**：自动移除 `_STRIP_KEYS`（`raw_data`、`id`、`venue_id`、`slot_id`、`state` 等内部字段）
+  - **兜底截断**：`_enforce_size_limit()` 确保最终输出不超过硬上限
+- **静态资源系统**：`data/resources/` 中的参考文档（`.md`、`.pdf`）自动注册为 MCP Resources，配合 `search_resource` 工具按关键词精准检索段落，避免全文灌入上下文。扫描版 PDF 自动检测并引导 Agent 查找文字摘要版
+- **智能 Flag 映射**：Auto-Registrar 从 Click 参数的 `opts` 属性提取真实 CLI flag（如 `--type`），而非朴素的 `--{param_name}` 转换，确保自定义 flag 命令正确调用
 - **进程内 CLI 调用**：通过 `typer.testing.CliRunner` 在进程内以 `--json` 模式调用，复用 CLI 完整的错误处理逻辑
 - **复用 OS Keyring 鉴权**：MCP 基于 stdio 本地运行，自动继承用户已保存的 CAS 凭证
 - **友好的错误降级**：当凭证缺失时，Tool 返回结构化错误提示而非抛出异常

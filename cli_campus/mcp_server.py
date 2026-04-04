@@ -22,6 +22,7 @@ import json
 import logging
 import textwrap
 from datetime import datetime
+from pathlib import Path
 from typing import Any, Optional
 
 import click
@@ -31,6 +32,23 @@ from mcp.server.fastmcp import FastMCP
 from cli_campus.core.models import CampusEvent
 
 logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# 设计准则 (Design Guidelines)
+# ---------------------------------------------------------------------------
+# 1. 任何 MCP Tool 的单次返回 **必须 ≤ _MAX_RESPONSE_KB**。超出部分自动截断并
+#    附加 truncated 标记。这是防止 LLM 上下文爆炸的硬性红线。
+# 2. Adapter 返回的 JSON 应尽可能精简——去掉 raw_data、UUID、内部 ID 等对
+#    大模型推理无价值的字段。_slim_for_agent() 是最后一道防线，但 Adapter 本身
+#    也应遵循最小数据原则。
+# 3. 嵌套/重复结构（如 venue slots 每个 slot 重复完整的 venue 对象）必须在
+#    _slim_for_agent 中去重压平。
+# 4. 静态资源 (data/resources/) 不应直接灌入 Tool 返回，而是通过
+#    MCP Resource + search_resource 工具按需检索。
+# ---------------------------------------------------------------------------
+
+# 单次 Tool 返回的硬上限 (KB)。超出后自动截断并标记 truncated。
+_MAX_RESPONSE_KB: int = 16
 
 # ---------------------------------------------------------------------------
 # Server 初始化
@@ -193,47 +211,143 @@ def _build_tool_docstring(cmd: click.Command, params: list[click.Parameter]) -> 
     return "\n".join(lines)
 
 
+# 需要从嵌套 dict 中剥离的内部字段
+_STRIP_KEYS: set[str] = {
+    "raw_data",
+    "id",
+    "source",
+    "category",
+    "timestamp",
+    "venue_id",
+    "slot_id",
+    "state",
+}
+
+
 def _slim_for_agent(raw: str) -> str:
-    """精简 CLI JSON 输出，去除对 LLM 无用的冗余字段。
+    """精简 CLI JSON 输出并强制执行大小上限。
 
-    CampusEvent 信封中的 ``raw_data``、``id``、``source``、``category``、
-    ``timestamp`` 都是内部/调试字段，对大模型推理无价值且严重膨胀 token 消耗。
-    此函数将 CampusEvent 列表压缩为仅保留 ``title`` + ``content`` 的精简格式。
-
-    对于非 CampusEvent 格式的数据（如 venue list 返回的 VenueInfo 数组、
-    错误响应等）直接透传。
+    处理流程:
+    1. CampusEvent 信封 → 仅保留 ``title`` + ``content``
+    2. VenueSlot 嵌套 → 按场馆分组，去重 venue 对象（约 **90%** 压缩）
+    3. 通用列表 → 删除 ``_STRIP_KEYS`` 中的内部字段
+    4. 全局硬截断 → 超过 ``_MAX_RESPONSE_KB`` 时截断并标记 ``truncated``
     """
     try:
         data = json.loads(raw)
     except (json.JSONDecodeError, ValueError):
-        return raw
+        return _enforce_size_limit(raw)
 
     # 仅处理列表格式
     if not isinstance(data, list) or not data:
-        return raw
+        return _enforce_size_limit(raw)
 
     first = data[0]
 
-    # 判断是否为 CampusEvent 信封格式 (含 title + content + raw_data)
+    # ── CampusEvent 信封格式 (title + content + raw_data) ──
     if isinstance(first, dict) and "title" in first and "content" in first:
         slim = []
         for item in data:
-            entry: dict[str, Any] = {"title": item.get("title", "")}
             content = item.get("content")
             if isinstance(content, dict):
-                entry.update(content)
-            slim.append(entry)
-        return json.dumps(slim, ensure_ascii=False)
+                # content 已包含业务字段，title 是冗余合成文本
+                slim.append(content)
+            else:
+                slim.append({"title": item.get("title", "")})
+        return _enforce_size_limit(json.dumps(slim, ensure_ascii=False))
 
-    return raw
+    # ── VenueSlot 嵌套格式 ({venue: {...}, slot: {...}}) ──
+    if (
+        isinstance(first, dict)
+        and "venue" in first
+        and "slot" in first
+        and isinstance(first["venue"], dict)
+    ):
+        return _enforce_size_limit(_slim_venue_slots(data))
+
+    # ── 通用列表: 剥离内部字段 ──
+    if isinstance(first, dict):
+        stripped = [
+            {k: v for k, v in item.items() if k not in _STRIP_KEYS} for item in data
+        ]
+        return _enforce_size_limit(json.dumps(stripped, ensure_ascii=False))
+
+    return _enforce_size_limit(raw)
 
 
-def _invoke_cli_json(cmd_path: list[str], params: dict[str, Any]) -> str:
+def _slim_venue_slots(data: list[dict[str, Any]]) -> str:
+    """将重复的 venue+slot 扁平列表按场馆分组，去重 venue 信息。
+
+    输入:  [{venue: {...}, slot: {...}}, ...]
+    输出:  [{venue: "JLH01 ...", slots: [...]}, ...]
+    """
+    from collections import OrderedDict
+
+    grouped: OrderedDict[str, dict[str, Any]] = OrderedDict()
+    for item in data:
+        venue = item.get("venue", {})
+        slot = item.get("slot", {})
+        key = venue.get("number", "") or venue.get("name", "")
+        if key not in grouped:
+            label = f"{venue.get('number', '')} {venue.get('name', '')}".strip()
+            grouped[key] = {
+                "venue": label,
+                "campus": venue.get("campus", ""),
+                "slots": [],
+            }
+        avail = slot.get("available", 0)
+        status = slot.get("status_text", "")
+        grouped[key]["slots"].append(
+            {
+                "time": f"{slot.get('start_time', '')}-{slot.get('end_time', '')}",
+                "available": avail,
+                "status": status,
+            }
+        )
+    return json.dumps(list(grouped.values()), ensure_ascii=False)
+
+
+def _enforce_size_limit(text: str) -> str:
+    """如果文本超过 _MAX_RESPONSE_KB，截断并附加 truncated 标记。"""
+    max_bytes = _MAX_RESPONSE_KB * 1024
+    encoded = text.encode("utf-8")
+    if len(encoded) <= max_bytes:
+        return text
+    # 截断到安全边界（避免截断多字节 UTF-8）
+    truncated = encoded[:max_bytes].decode("utf-8", errors="ignore")
+    msg = (
+        f"数据量过大 ({len(encoded) // 1024}KB)，"
+        f"已截断至 {_MAX_RESPONSE_KB}KB。"
+        "建议使用更精确的筛选参数缩小范围。"
+    )
+    return json.dumps(
+        {
+            "truncated": True,
+            "message": msg,
+            "partial_data": truncated,
+        },
+        ensure_ascii=False,
+    )
+
+
+def _invoke_cli_json(
+    cmd_path: list[str],
+    params: dict[str, Any],
+    flag_map: dict[str, str] | None = None,
+) -> str:
     """在进程内以 --json 模式调用 Typer 命令并捕获 stdout。
 
     通过 ``typer.testing.CliRunner`` 调用，避免启动子进程，
     复用已有的 CLI 逻辑（含错误处理和 JSON 序列化）。
     返回前会经过 ``_slim_for_agent`` 精简，去除 ``raw_data`` 等冗余字段。
+
+    Args:
+        cmd_path: 子命令路径，如 ``["venue", "list"]``。
+        params: 参数名→值映射（Python 参数名作为 key）。
+        flag_map: 参数名→实际 CLI flag 映射（如 ``{"type_name": "--type"}``）。
+            由 ``_make_tool_function`` 从 Click 参数的 ``opts`` 中提取，
+            确保即使 Typer 自定义了 flag 名，也能正确传递。
+            若未提供则 fallback 到 ``--{name.replace('_', '-')}``。
     """
     from typer.testing import CliRunner
 
@@ -243,12 +357,13 @@ def _invoke_cli_json(cmd_path: list[str], params: dict[str, Any]) -> str:
 
     # 构建参数列表: ["--json", "bus", "--route", "循环"]
     args: list[str] = ["--json"] + cmd_path
+    _map = flag_map or {}
 
     for key, value in params.items():
         if value is None:
             continue
-        # 将 Python 参数名转回 CLI flag: semester → --semester
-        flag = f"--{key.replace('_', '-')}"
+        # 优先使用注册时收集的真实 flag，fallback 到朴素转换
+        flag = _map.get(key, f"--{key.replace('_', '-')}")
         if isinstance(value, bool):
             if value:
                 args.append(flag)
@@ -324,18 +439,26 @@ def _make_tool_function(
     # 闭包捕获: cmd_path
     captured_cmd_path = list(cmd_path)
 
+    # 构建参数名→实际 CLI flag 映射 (e.g. {"type_name": "--type"})
+    captured_flag_map: dict[str, str] = {}
+    for p in valid_params:
+        if p.name and hasattr(p, "opts") and p.opts:
+            # opts[0] 是长 flag (如 "--type")，优先使用
+            captured_flag_map[p.name] = p.opts[0]
+
     func_code = textwrap.dedent(f"""\
         async def {tool_name}({sig_str}) -> str:
             # 收集非 None 参数
             _locals = dict(locals())
             _params = {{k: v for k, v in _locals.items() if v is not None}}
-            return await _to_thread(_invoke, _cmd_path, _params)
+            return await _to_thread(_invoke, _cmd_path, _params, _flag_map)
     """)
 
     local_ns: dict[str, Any] = {
         "_invoke": _invoke_cli_json,
         "_to_thread": asyncio.to_thread,
         "_cmd_path": captured_cmd_path,
+        "_flag_map": captured_flag_map,
     }
     exec(func_code, local_ns)  # noqa: S102
 
@@ -440,6 +563,164 @@ async def bus_notes() -> str:
 
 
 # ---------------------------------------------------------------------------
+# 模块三：静态资源系统 (Static Resource Context)
+# ---------------------------------------------------------------------------
+
+# 资源目录
+_RESOURCES_DIR = Path(__file__).parent / "data" / "resources"
+
+# 缓存: stem → (标题, 全文)
+_resource_cache: dict[str, tuple[str, str]] = {}
+
+
+def _load_resources() -> None:
+    """扫描 data/resources/ 目录，将 .md 和 .pdf 文件载入缓存。
+
+    - ``.md`` 文件直接读取原文。
+    - ``.pdf`` 文件通过 pymupdf 提取文本；若为纯扫描件（无可提取文本），
+      则生成占位说明，引导 Agent 使用同名 .md 摘要或 search_resource 检索。
+    """
+    if _resource_cache:
+        return  # 已加载
+    if not _RESOURCES_DIR.is_dir():
+        return
+    for p in sorted(_RESOURCES_DIR.glob("*.md")):
+        text = p.read_text(encoding="utf-8")
+        first_line = text.split("\n", 1)[0].strip()
+        if first_line.startswith("#"):
+            title = first_line.lstrip("# ").strip()
+        else:
+            title = p.stem
+        _resource_cache[p.stem] = (title, text)
+    # PDF 支持 (需 pymupdf)
+    for p in sorted(_RESOURCES_DIR.glob("*.pdf")):
+        try:
+            import pymupdf  # noqa: F811
+
+            doc = pymupdf.open(str(p))
+            pages_text = [page.get_text() for page in doc]
+            full_text = "\n".join(pages_text).strip()
+            doc.close()
+            if len(full_text) < 100:
+                # 纯扫描件，无可提取文本
+                full_text = (
+                    f"# {p.stem}\n\n"
+                    f"本文档为扫描版 PDF（{len(pages_text)} 页），"
+                    "无法直接提取文本。\n"
+                    "请使用 search_resource 工具搜索同名的文字摘要版，"
+                    "或向用户说明需要查阅原始 PDF 文件。"
+                )
+            title = p.stem
+            _resource_cache[p.stem] = (title, full_text)
+        except ImportError:
+            logger.debug("pymupdf not installed, skipping PDF: %s", p.name)
+        except Exception:
+            logger.warning("Failed to load PDF: %s", p.name, exc_info=True)
+
+
+def auto_register_resources() -> int:
+    """将 data/resources/*.md 注册为 MCP Resources。
+
+    Returns:
+        注册的资源数量。
+    """
+    _load_resources()
+
+    for stem, (title, _text) in _resource_cache.items():
+        # 用闭包捕获 stem — 注意 Python late-binding 陷阱，
+        # 须通过工厂函数立即绑定
+        def _make_reader(s: str) -> Any:
+            async def _reader() -> str:
+                return _resource_cache[s][1]
+
+            return _reader
+
+        mcp.resource(
+            f"campus://resources/{stem}",
+            name=stem,
+            title=title,
+            description=f"校园参考资料: {title}",
+            mime_type="text/markdown",
+        )(_make_reader(stem))
+
+    count = len(_resource_cache)
+    if count:
+        logger.info("Auto-registered %d static resources", count)
+    return count
+
+
+@mcp.resource(
+    "campus://resources",
+    name="resource_index",
+    title="校园参考资料索引",
+    description="列出所有可用的校园参考文档，供 Agent 选择读取。",
+    mime_type="application/json",
+)
+async def resource_index() -> str:
+    """返回所有已注册静态资源的索引列表。"""
+    _load_resources()
+    items = [
+        {
+            "name": stem,
+            "title": title,
+            "uri": f"campus://resources/{stem}",
+        }
+        for stem, (title, _) in _resource_cache.items()
+    ]
+    return json.dumps(items, ensure_ascii=False)
+
+
+@mcp.tool()
+async def search_resource(query: str, resource_name: str = "") -> str:
+    """在校园参考资料中搜索包含关键词的段落。
+
+    用于快速检索学生手册、校规校纪等长文档中的相关内容，
+    避免将整篇文档填入上下文。返回所有匹配段落（按 ## 标题分段）。
+
+    Args:
+        query: 搜索关键词（如"奖学金"、"补考"、"宿舍"）。
+        resource_name: 限定在某个资源中搜索（如"student_handbook"）。
+            留空则搜索全部资源。
+    """
+    _load_resources()
+    if not _resource_cache:
+        return json.dumps(
+            {"error": "no_resources", "message": "暂无可用参考资料"},
+            ensure_ascii=False,
+        )
+
+    targets = (
+        {resource_name: _resource_cache[resource_name]}
+        if resource_name and resource_name in _resource_cache
+        else _resource_cache
+    )
+
+    results: list[dict[str, str]] = []
+    for stem, (title, text) in targets.items():
+        # 按 ## 切分段落
+        sections = text.split("\n## ")
+        for i, section in enumerate(sections):
+            if query.lower() in section.lower():
+                # 还原 ## 前缀（第一段是文件头部）
+                heading = section.split("\n", 1)[0].strip().lstrip("# ")
+                body = section.strip()
+                if i > 0:
+                    body = "## " + body
+                results.append({"resource": stem, "section": heading, "content": body})
+
+    if not results:
+        return json.dumps(
+            {"matches": 0, "message": f"未找到包含 '{query}' 的内容"},
+            ensure_ascii=False,
+        )
+
+    return json.dumps(
+        {"matches": len(results), "results": results},
+        ensure_ascii=False,
+    )
+
+
+# ---------------------------------------------------------------------------
 # MCP Prompts
 # ---------------------------------------------------------------------------
 
@@ -518,6 +799,7 @@ async def campus_morning_briefing() -> str:
 # ---------------------------------------------------------------------------
 
 auto_register_tools()
+auto_register_resources()
 
 
 # ---------------------------------------------------------------------------

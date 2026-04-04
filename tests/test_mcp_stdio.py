@@ -162,10 +162,12 @@ class TestBusTool:
 
     @pytest.mark.anyio
     async def test_bus_returns_data(self) -> None:
-        """campus_bus 应返回校车时刻数据。"""
+        """campus_bus 带 schedule_type 过滤应返回校车时刻数据。"""
 
         async def _check(session: ClientSession) -> None:
-            result = await session.call_tool("campus_bus")
+            result = await session.call_tool(
+                "campus_bus", arguments={"schedule_type": "workday"}
+            )
             assert not result.isError
             data = json.loads(result.content[0].text)
             assert isinstance(data, list)
@@ -178,28 +180,34 @@ class TestBusTool:
         """campus_bus 带路线过滤应返回匹配结果。"""
 
         async def _check(session: ClientSession) -> None:
-            result = await session.call_tool("campus_bus", arguments={"route": "循环"})
+            result = await session.call_tool(
+                "campus_bus",
+                arguments={"route": "兰台", "schedule_type": "holiday"},
+            )
             assert not result.isError
             data = json.loads(result.content[0].text)
             assert isinstance(data, list)
             assert len(data) > 0
             for item in data:
                 combined = json.dumps(item, ensure_ascii=False)
-                assert "循环" in combined
+                assert "兰台" in combined
 
         await _run_with_session(_check)
 
     @pytest.mark.anyio
     async def test_bus_slim_output(self) -> None:
-        """campus_bus 输出应已精简，不含 raw_data/id/source 等冗余字段。"""
+        """campus_bus 输出应已精简，仅保留 content 字段。"""
 
         async def _check(session: ClientSession) -> None:
-            result = await session.call_tool("campus_bus")
+            result = await session.call_tool(
+                "campus_bus", arguments={"schedule_type": "workday"}
+            )
             data = json.loads(result.content[0].text)
             first = data[0]
-            assert "title" in first
+            # content 字段直接提升为顶层
             assert "route_name" in first
             assert "departure_time" in first
+            # 信封字段已去除
             assert "raw_data" not in first
             assert "source" not in first
             assert "category" not in first

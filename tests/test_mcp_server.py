@@ -217,7 +217,9 @@ class TestInvokeCLIJson:
         """通过 _invoke_cli_json 调用校车查询应返回 JSON。"""
         from cli_campus.mcp_server import _invoke_cli_json
 
-        result = _invoke_cli_json(["bus"], {})
+        result = _invoke_cli_json(
+            ["bus"], {"schedule_type": "workday"}, {"schedule_type": "--type"}
+        )
         data = json.loads(result)
         assert isinstance(data, list)
 
@@ -225,21 +227,25 @@ class TestInvokeCLIJson:
         """带路线过滤的校车查询。"""
         from cli_campus.mcp_server import _invoke_cli_json
 
-        result = _invoke_cli_json(["bus"], {"route": "循环"})
+        result = _invoke_cli_json(
+            ["bus"],
+            {"route": "兰台", "schedule_type": "workday"},
+            {"schedule_type": "--type"},
+        )
         data = json.loads(result)
         assert isinstance(data, list)
         for item in data:
             combined = json.dumps(item, ensure_ascii=False)
-            assert "循环" in combined
+            assert "兰台" in combined
 
     def test_empty_params_ignored(self) -> None:
         """None 参数应被忽略而非传递。"""
         from cli_campus.mcp_server import _invoke_cli_json
 
-        # 不应报错
+        # 不应报错 (bus 无过滤可能超出大小限制，但应正常返回 JSON)
         result = _invoke_cli_json(["bus"], {"route": None, "schedule_type": None})
         data = json.loads(result)
-        assert isinstance(data, list)
+        assert isinstance(data, (list, dict))
 
     def test_bus_invocation_from_async_context(self) -> None:
         """从 async 上下文（模拟 MCP 运行时）调用应正常返回数据。
@@ -252,7 +258,12 @@ class TestInvokeCLIJson:
         from cli_campus.mcp_server import _invoke_cli_json
 
         async def _run() -> str:
-            return await asyncio.to_thread(_invoke_cli_json, ["bus"], {})
+            return await asyncio.to_thread(
+                _invoke_cli_json,
+                ["bus"],
+                {"schedule_type": "workday"},
+                {"schedule_type": "--type"},
+            )
 
         result = asyncio.run(_run())
         data = json.loads(result)
@@ -277,6 +288,36 @@ class TestMCPResources:
         result = asyncio.run(bus_notes())
         assert "东南大学" in result
         assert "workday" in result
+
+    def test_resource_index(self) -> None:
+        """资源索引应列出所有已注册文档。"""
+        from cli_campus.mcp_server import resource_index
+
+        result = asyncio.run(resource_index())
+        data = json.loads(result)
+        assert isinstance(data, list)
+        assert len(data) >= 1
+        item = data[0]
+        assert "name" in item
+        assert "title" in item
+        assert "uri" in item
+        assert item["uri"].startswith("campus://resources/")
+
+    def test_student_handbook_resource_registered(self) -> None:
+        """学生手册应被注册为 MCP Resource。"""
+        from cli_campus.mcp_server import _resource_cache
+
+        assert "student_handbook" in _resource_cache
+        title, text = _resource_cache["student_handbook"]
+        assert "学生手册" in title
+        assert len(text) > 100
+
+    def test_auto_register_resources_returns_count(self) -> None:
+        from cli_campus.mcp_server import auto_register_resources
+
+        count = auto_register_resources()
+        assert isinstance(count, int)
+        assert count >= 1
 
 
 class TestMCPPrompts:
@@ -327,8 +368,8 @@ class TestMakeToolFunction:
 class TestSlimForAgent:
     """_slim_for_agent 数据精简测试。"""
 
-    def test_strips_raw_data_and_envelope(self) -> None:
-        """CampusEvent 格式应去除 raw_data、id、source、category、timestamp。"""
+    def test_strips_envelope_keeps_content(self) -> None:
+        """CampusEvent 格式: 去除信封，仅保留 content 字段 (不保留冗余 title)。"""
         from cli_campus.mcp_server import _slim_for_agent
 
         raw = json.dumps(
@@ -347,21 +388,34 @@ class TestSlimForAgent:
         result = json.loads(_slim_for_agent(raw))
         assert len(result) == 1
         item = result[0]
-        assert item["title"] == "Test Event"
+        # content 字段被提升为顶层
         assert item["name"] == "foo"
         assert item["value"] == 42
+        # 信封字段全部去除
         assert "raw_data" not in item
         assert "id" not in item
         assert "source" not in item
-        assert "category" not in item
-        assert "timestamp" not in item
 
-    def test_passthrough_non_campus_event(self) -> None:
-        """非 CampusEvent 格式（如 VenueInfo）应原样透传。"""
+    def test_campus_event_without_content_dict(self) -> None:
+        """content 非 dict 时保留 title 作为 fallback。"""
         from cli_campus.mcp_server import _slim_for_agent
 
-        raw = json.dumps([{"venue_id": "abc", "name": "场馆A"}])
-        assert _slim_for_agent(raw) == raw
+        raw = json.dumps([{"title": "Test", "content": "plain text", "raw_data": {}}])
+        result = json.loads(_slim_for_agent(raw))
+        assert result[0]["title"] == "Test"
+
+    def test_strips_internal_ids_from_generic_list(self) -> None:
+        """通用列表 (如 VenueInfo) 应剥离 venue_id/state 等内部字段。"""
+        from cli_campus.mcp_server import _slim_for_agent
+
+        raw = json.dumps(
+            [{"venue_id": "abc", "name": "场馆A", "state": 0, "campus": "九龙湖"}]
+        )
+        result = json.loads(_slim_for_agent(raw))
+        assert result[0]["name"] == "场馆A"
+        assert result[0]["campus"] == "九龙湖"
+        assert "venue_id" not in result[0]
+        assert "state" not in result[0]
 
     def test_passthrough_error_object(self) -> None:
         """错误对象应原样透传。"""
@@ -375,3 +429,206 @@ class TestSlimForAgent:
         from cli_campus.mcp_server import _slim_for_agent
 
         assert _slim_for_agent("not json") == "not json"
+
+    def test_venue_slots_grouped(self) -> None:
+        """嵌套 venue+slot 返回应按场馆分组去重。"""
+        from cli_campus.mcp_server import _slim_for_agent
+
+        venue = {
+            "venue_id": "x",
+            "name": "A场",
+            "number": "A01",
+            "campus": "九龙湖",
+            "capacity": 4,
+            "state": 0,
+        }
+        raw = json.dumps(
+            [
+                {
+                    "venue": venue,
+                    "slot": {
+                        "slot_id": "s1",
+                        "start_time": "09:00",
+                        "end_time": "10:00",
+                        "available": 2,
+                        "status_text": "可预约",
+                        "venue_id": "x",
+                        "date": "2026-04-05",
+                    },
+                },
+                {
+                    "venue": venue,
+                    "slot": {
+                        "slot_id": "s2",
+                        "start_time": "10:00",
+                        "end_time": "11:00",
+                        "available": 0,
+                        "status_text": "已满",
+                        "venue_id": "x",
+                        "date": "2026-04-05",
+                    },
+                },
+            ]
+        )
+        result = json.loads(_slim_for_agent(raw))
+        assert len(result) == 1  # 分组为 1 个场馆
+        assert result[0]["venue"] == "A01 A场"
+        assert len(result[0]["slots"]) == 2
+        assert result[0]["slots"][0]["time"] == "09:00-10:00"
+        assert result[0]["slots"][1]["available"] == 0
+
+
+class TestSearchResource:
+    """search_resource 工具测试。"""
+
+    def test_search_returns_matches(self) -> None:
+        from cli_campus.mcp_server import search_resource
+
+        result = asyncio.run(search_resource("奖学金"))
+        data = json.loads(result)
+        assert data["matches"] >= 1
+        assert "results" in data
+        assert "奖学金" in data["results"][0]["content"]
+
+    def test_search_specific_resource(self) -> None:
+        from cli_campus.mcp_server import search_resource
+
+        result = asyncio.run(search_resource("考试", resource_name="student_handbook"))
+        data = json.loads(result)
+        assert data["matches"] >= 1
+
+    def test_search_no_match(self) -> None:
+        from cli_campus.mcp_server import search_resource
+
+        result = asyncio.run(search_resource("完全不可能匹配的关键词xyz123"))
+        data = json.loads(result)
+        assert data["matches"] == 0
+        assert "message" in data
+
+    def test_search_nonexistent_resource(self) -> None:
+        """搜索不存在的资源名时应搜全部。"""
+        from cli_campus.mcp_server import search_resource
+
+        result = asyncio.run(search_resource("宿舍", resource_name="nonexistent"))
+        data = json.loads(result)
+        # fallback 全部搜索
+        assert data["matches"] >= 1
+
+
+class TestFlagMapping:
+    """参数名→CLI flag 映射测试。"""
+
+    def test_venue_list_custom_flag(self) -> None:
+        """venue list 的 type_name 应映射到 --type 而非 --type-name。"""
+        from cli_campus.mcp_server import _invoke_cli_json
+
+        result = _invoke_cli_json(
+            ["venue", "list"],
+            {"type_name": "羽毛球场", "campus": "九龙湖"},
+            {"type_name": "--type", "campus": "--campus"},
+        )
+        data = json.loads(result)
+        assert isinstance(data, list)
+        assert "error" not in (data[0] if data else {})
+
+    def test_bus_custom_flag(self) -> None:
+        """bus 的 schedule_type 应映射到 --type 而非 --schedule-type。"""
+        from cli_campus.mcp_server import _invoke_cli_json
+
+        result = _invoke_cli_json(
+            ["bus"],
+            {"schedule_type": "workday"},
+            {"schedule_type": "--type", "route": "--route"},
+        )
+        data = json.loads(result)
+        assert isinstance(data, list)
+        assert len(data) > 0
+
+    def test_flag_map_fallback(self) -> None:
+        """未提供 flag_map 时应 fallback 到朴素 --name 转换。"""
+        from cli_campus.mcp_server import _invoke_cli_json
+
+        # bus route 的朴素转换 --route 和实际 flag 一致，应正常工作
+        result = _invoke_cli_json(["bus"], {"route": "兰台"})
+        data = json.loads(result)
+        # 可能是 list 或截断后的 dict，但不应是 error
+        if isinstance(data, dict):
+            assert data.get("truncated") is True or "error" not in data
+        else:
+            assert isinstance(data, list)
+
+    def test_dynamic_tool_carries_flag_map(self) -> None:
+        """动态生成的 MCP 工具函数应携带正确的 flag_map。"""
+        from cli_campus.mcp_server import mcp
+
+        tools = mcp._tool_manager._tools
+        venue_tool = tools.get("campus_venue_list")
+        assert venue_tool is not None
+
+        # 调用应成功（不再 SystemExit(2)）
+        result = asyncio.run(venue_tool.fn(type_name="羽毛球场", campus="九龙湖"))
+        data = json.loads(result)
+        assert isinstance(data, list)
+        assert len(data) > 0
+        assert "name" in data[0]
+
+
+class TestEnforceSizeLimit:
+    """输出大小上限测试。"""
+
+    def test_small_data_passes_through(self) -> None:
+        from cli_campus.mcp_server import _enforce_size_limit
+
+        text = '{"ok": true}'
+        assert _enforce_size_limit(text) == text
+
+    def test_large_data_truncated(self) -> None:
+        from cli_campus.mcp_server import _MAX_RESPONSE_KB, _enforce_size_limit
+
+        # 生成超过限制的数据
+        big = "x" * (_MAX_RESPONSE_KB * 1024 + 1000)
+        result = _enforce_size_limit(big)
+        data = json.loads(result)
+        assert data["truncated"] is True
+        assert "partial_data" in data
+
+    def test_bus_all_schedules_truncated(self) -> None:
+        """校车全量数据 (3 种时刻表) 应被截断。"""
+        from cli_campus.mcp_server import _invoke_cli_json
+
+        result = _invoke_cli_json(["bus"], {})
+        data = json.loads(result)
+        assert isinstance(data, dict)
+        assert data.get("truncated") is True
+
+    def test_bus_workday_fits(self) -> None:
+        """校车工作日时刻表应在限制内。"""
+        from cli_campus.mcp_server import _MAX_RESPONSE_KB, _invoke_cli_json
+
+        result = _invoke_cli_json(
+            ["bus"], {"schedule_type": "workday"}, {"schedule_type": "--type"}
+        )
+        assert len(result.encode("utf-8")) <= _MAX_RESPONSE_KB * 1024
+        data = json.loads(result)
+        assert isinstance(data, list)
+
+
+class TestPdfResourceLoading:
+    """静态资源 PDF 加载测试。"""
+
+    def test_scanned_pdf_has_fallback_text(self) -> None:
+        """扫描版 PDF 应生成占位说明而非空文本。"""
+        from cli_campus.mcp_server import _resource_cache
+
+        key = "东南大学大学生手册2025"
+        assert key in _resource_cache
+        title, text = _resource_cache[key]
+        assert "扫描" in text
+        assert "search_resource" in text
+
+    def test_pdf_and_md_both_registered(self) -> None:
+        """同名 PDF 和 MD 都应被注册为独立资源。"""
+        from cli_campus.mcp_server import _resource_cache
+
+        assert "student_handbook" in _resource_cache
+        assert "东南大学大学生手册2025" in _resource_cache
