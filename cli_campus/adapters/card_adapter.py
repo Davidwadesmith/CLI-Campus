@@ -3,7 +3,8 @@
 通过 SEUAuthWrapper 获取已认证的 httpx 客户端，
 向校园卡门户发起请求并返回标准化的 CampusEvent。
 
-注意：当前使用占位 URL，待真实接口确认后替换。
+⚠️  当前一卡通真实接口尚未对接。调用 fetch() 会抛出 AdapterError 提示。
+    待确认真实接口地址后可通过 config 的 service_url / api_url 覆盖。
 """
 
 from __future__ import annotations
@@ -29,8 +30,9 @@ logger = logging.getLogger(__name__)
 # 常量 — 待替换为真实接口
 # ---------------------------------------------------------------------------
 
-_CARD_SERVICE_URL: str = "http://my.seu.edu.cn/api/card/balance"
-_CARD_API_URL: str = "http://my.seu.edu.cn/api/card/balance"
+# 占位 URL — 未对接真实系统前调用会返回明确的错误信息而非 404。
+_CARD_SERVICE_URL: str = ""
+_CARD_API_URL: str = ""
 
 
 class CardAdapter(BaseCampusAdapter):
@@ -60,7 +62,13 @@ class CardAdapter(BaseCampusAdapter):
         Raises:
             AuthRequiredError: 本地无凭证。
             AuthFailedError: CAS 登录失败。
+            AdapterError: 真实接口未对接时直接报错。
         """
+        if not self._api_url:
+            raise AdapterError(
+                "一卡通接口尚未对接，当前无法查询。"
+                "请在 config 中配置 service_url 和 api_url 后重试。"
+            )
         client, _ = await self._auth.get_authenticated_client(self._service_url)
         # 如果走到这里说明认证成功，关闭临时 client
         await self._auth.close()
@@ -72,8 +80,14 @@ class CardAdapter(BaseCampusAdapter):
         Raises:
             AuthRequiredError: 本地无凭证。
             AuthFailedError: CAS 登录失败。
-            AdapterError: API 请求失败。
+            AdapterError: API 请求失败或接口未对接。
         """
+        if not self._api_url:
+            raise AdapterError(
+                "一卡通接口尚未对接，当前无法查询余额。"
+                "请等待后续版本更新或在 config 中配置真实的 "
+                "service_url 和 api_url。"
+            )
         client, redirect_url = await self._auth.get_authenticated_client(
             self._service_url
         )

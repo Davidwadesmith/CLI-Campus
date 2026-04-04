@@ -15,9 +15,21 @@ from cli_campus.core.models import AdapterSource, EventCategory
 class TestCardAdapter:
     """一卡通适配器测试。"""
 
+    def test_fetch_not_implemented(self) -> None:
+        """默认配置（无 api_url）时 fetch 应直接抛出 AdapterError。"""
+        adapter = CardAdapter()
+        with pytest.raises(AdapterError, match="一卡通接口尚未对接"):
+            asyncio.run(adapter.fetch())
+
+    def test_check_auth_not_implemented(self) -> None:
+        """默认配置时 check_auth 应直接抛出 AdapterError。"""
+        adapter = CardAdapter()
+        with pytest.raises(AdapterError, match="一卡通接口尚未对接"):
+            asyncio.run(adapter.check_auth())
+
     @patch("cli_campus.adapters.card_adapter.SEUAuthWrapper")
-    def test_fetch_success(self, mock_wrapper_cls: MagicMock) -> None:
-        """正常流程：认证成功 + API 返回有效数据。"""
+    def test_fetch_success_with_custom_url(self, mock_wrapper_cls: MagicMock) -> None:
+        """配置了真实 URL 后：认证成功 + API 返回有效数据。"""
         mock_response = MagicMock()
         mock_response.json.return_value = {
             "student_id": "213000001",
@@ -37,7 +49,12 @@ class TestCardAdapter:
         mock_wrapper.close = AsyncMock()
         mock_wrapper_cls.return_value = mock_wrapper
 
-        adapter = CardAdapter()
+        adapter = CardAdapter(
+            config={
+                "service_url": "https://ecard.seu.edu.cn/login",
+                "api_url": "https://ecard.seu.edu.cn/api/balance",
+            }
+        )
         events = asyncio.run(adapter.fetch())
 
         assert len(events) == 1
@@ -58,7 +75,12 @@ class TestCardAdapter:
         mock_wrapper.close = AsyncMock()
         mock_wrapper_cls.return_value = mock_wrapper
 
-        adapter = CardAdapter()
+        adapter = CardAdapter(
+            config={
+                "service_url": "https://ecard.seu.edu.cn/login",
+                "api_url": "https://ecard.seu.edu.cn/api/balance",
+            }
+        )
 
         with pytest.raises(AuthRequiredError):
             asyncio.run(adapter.fetch())
@@ -76,7 +98,12 @@ class TestCardAdapter:
         mock_wrapper.close = AsyncMock()
         mock_wrapper_cls.return_value = mock_wrapper
 
-        adapter = CardAdapter()
+        adapter = CardAdapter(
+            config={
+                "service_url": "https://ecard.seu.edu.cn/login",
+                "api_url": "https://ecard.seu.edu.cn/api/balance",
+            }
+        )
 
         with pytest.raises(AdapterError, match="一卡通 API 请求失败"):
             asyncio.run(adapter.fetch())

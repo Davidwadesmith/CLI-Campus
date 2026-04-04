@@ -182,17 +182,22 @@ dependencies = [
     { name = "mcp" },
     { name = "openai" },
     { name = "pydantic" },
-    { name = "pymupdf" },
     { name = "pyyaml" },
     { name = "rich" },
     { name = "seu-auth" },
     { name = "typer" },
 ]
 
+[package.optional-dependencies]
+pdf = [
+    { name = "pymupdf" },
+]
+
 [package.dev-dependencies]
 dev = [
     { name = "mypy" },
     { name = "pillow" },
+    { name = "pymupdf" },
     { name = "pytest" },
     { name = "pytest-asyncio" },
     { name = "rapidocr-onnxruntime" },
@@ -209,17 +214,19 @@ requires-dist = [
     { name = "mcp", specifier = ">=1.27.0" },
     { name = "openai", specifier = ">=2.30.0" },
     { name = "pydantic", specifier = ">=2.0.0" },
-    { name = "pymupdf", specifier = ">=1.27.2.2" },
+    { name = "pymupdf", marker = "extra == 'pdf'", specifier = ">=1.27.2.2" },
     { name = "pyyaml", specifier = ">=6.0" },
     { name = "rich", specifier = ">=13.0.0" },
     { name = "seu-auth", git = "https://github.com/Golevka2001/SEU-Auth.git?rev=0.1.0" },
     { name = "typer", specifier = ">=0.9.0" },
 ]
+provides-extras = ["pdf"]
 
 [package.metadata.requires-dev]
 dev = [
     { name = "mypy", specifier = ">=1.8.0" },
     { name = "pillow", specifier = ">=12.2.0" },
+    { name = "pymupdf", specifier = ">=1.27.2.2" },
     { name = "pytest", specifier = ">=8.0.0" },
     { name = "pytest-asyncio", specifier = ">=0.23.0" },
     { name = "rapidocr-onnxruntime", specifier = ">=1.4.4" },

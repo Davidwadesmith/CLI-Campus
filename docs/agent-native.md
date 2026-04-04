@@ -324,12 +324,13 @@ Step 4: 将 JSON 结果整理为人类可读的回复
 | **Tool** | `campus_course` | 查询课程表 |
 | **Tool** | `campus_grade` | 查询成绩 |
 | **Tool** | `campus_exam` | 查询考试安排 |
-| **Tool** | `campus_card` | 查询一卡通余额 |
+| **Tool** | `campus_card` | 查询一卡通余额 (接口待对接) |
 | **Tool** | `campus_venue_list` | 列出可预约场馆 |
 | **Tool** | `campus_venue_slots` | 查询场馆时段 |
-| **Tool** | `campus_venue_book` | 预约场馆 |
+| **Tool** | `campus_venue_captcha` | 获取预约验证码 |
+| **Tool** | `campus_venue_book` | 预约场馆 (支持验证码) |
 | **Tool** | `campus_venue_my` | 查看我的预约 |
-| **Tool** | `campus_venue_cancel` | 取消预约 |
+| **Tool** | `campus_venue_cancel` | 取消预约 (原因必填) |
 | **Tool** | `campus_fetch` | 运行 YAML 声明式适配器 |
 | **Resource** | `campus://info/bus-notes` | 校车特殊规则说明（节假日、短驳车等上下文） |
 | **Resource** | `campus://resources` | 校园参考资料索引（列出所有可用文档） |

@@ -13,6 +13,7 @@ from cli_campus.core.exceptions import AdapterError
 from cli_campus.core.models import (
     AdapterSource,
     BookingInfo,
+    CaptchaInfo,
     EventCategory,
     TimeSlotInfo,
     VenueInfo,
@@ -275,6 +276,92 @@ class TestMakeBooking:
         with pytest.raises(AdapterError, match="该时间段预约已满"):
             asyncio.run(adapter.make_booking("uuid-1", "2025-07-01", "09:00", "10:00"))
 
+    def test_make_booking_with_captcha(self) -> None:
+        """预约附带验证码参数。"""
+        adapter = _make_adapter()
+        mock_client = AsyncMock()
+        mock_client.post = AsyncMock(
+            return_value=_mock_gql_response(
+                {
+                    "saveAppointmentInformation": {
+                        "appointmentId": "booking-456",
+                        "errcode": "0",
+                        "msg": "预约成功",
+                    }
+                }
+            )
+        )
+        adapter._client = mock_client
+
+        booking = asyncio.run(
+            adapter.make_booking(
+                "uuid-1",
+                "2025-07-01",
+                "09:00",
+                "10:00",
+                captcha_id="cap-123",
+                captcha_code="ABCD",
+            )
+        )
+        assert booking.booking_id == "booking-456"
+
+        # 验证 variables 中包含 captchaId 和 captchaCode
+        call_args = mock_client.post.call_args
+        body = call_args.kwargs.get("json") or call_args[1].get("json")
+        variables = body["variables"]
+        assert variables["captchaId"] == "cap-123"
+        assert variables["captchaCode"] == "ABCD"
+
+
+# ---------------------------------------------------------------------------
+# VenueAdapter.generate_captcha 测试
+# ---------------------------------------------------------------------------
+
+
+class TestGenerateCaptcha:
+    def test_generate_captcha_success(self) -> None:
+        """验证码生成成功。"""
+        adapter = _make_adapter()
+        mock_client = AsyncMock()
+        mock_client.post = AsyncMock(
+            return_value=_mock_gql_response(
+                {
+                    "generateCaptcha": {
+                        "id": "cap-id-001",
+                        "captcha_image": "data:image/png;base64,iVBOR...",
+                        "errCode": "0",
+                        "errMsg": "",
+                    }
+                }
+            )
+        )
+        adapter._client = mock_client
+
+        captcha = asyncio.run(adapter.generate_captcha())
+        assert captcha.captcha_id == "cap-id-001"
+        assert "base64" in captcha.captcha_image
+
+    def test_generate_captcha_error(self) -> None:
+        """验证码生成失败时抛出 AdapterError。"""
+        adapter = _make_adapter()
+        mock_client = AsyncMock()
+        mock_client.post = AsyncMock(
+            return_value=_mock_gql_response(
+                {
+                    "generateCaptcha": {
+                        "id": "",
+                        "captcha_image": "",
+                        "errCode": "1",
+                        "errMsg": "系统繁忙",
+                    }
+                }
+            )
+        )
+        adapter._client = mock_client
+
+        with pytest.raises(AdapterError, match="验证码生成失败"):
+            asyncio.run(adapter.generate_captcha())
+
 
 # ---------------------------------------------------------------------------
 # VenueAdapter.cancel_booking 测试
@@ -299,6 +386,18 @@ class TestCancelBooking:
 
         result = asyncio.run(adapter.cancel_booking("booking-123", "有事"))
         assert result is True
+
+    def test_cancel_empty_reason_raises(self) -> None:
+        """取消原因为空时直接抛出 AdapterError。"""
+        adapter = _make_adapter()
+        with pytest.raises(AdapterError, match="取消预约需要填写原因"):
+            asyncio.run(adapter.cancel_booking("booking-123", ""))
+
+    def test_cancel_whitespace_reason_raises(self) -> None:
+        """取消原因仅空白时也应被拒绝。"""
+        adapter = _make_adapter()
+        with pytest.raises(AdapterError, match="取消预约需要填写原因"):
+            asyncio.run(adapter.cancel_booking("booking-123", "   "))
 
 
 # ---------------------------------------------------------------------------
@@ -467,3 +566,8 @@ class TestModels:
         from cli_campus.core.models import AdapterSource
 
         assert AdapterSource.SEU_VENUE == "seu_venue"
+
+    def test_captcha_info_creation(self) -> None:
+        c = CaptchaInfo(captcha_id="cap-1", captcha_image="base64data")
+        assert c.captcha_id == "cap-1"
+        assert c.captcha_image == "base64data"

@@ -105,6 +105,7 @@ class CampusEvent(BaseModel):
 | `VenueInfo` | 场馆信息 | venue_id, name, number, type_name, campus, capacity |
 | `TimeSlotInfo` | 场馆时段 | slot_id, start_time, end_time, available, date |
 | `BookingInfo` | 预约记录 | booking_id, venue_name, date, start_time, end_time, state |
+| `CaptchaInfo` | 预约验证码 | captcha_id, captcha_image |
 
 ### 3.3 枚举类型
 

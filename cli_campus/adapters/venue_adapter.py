@@ -24,6 +24,7 @@ from cli_campus.core.models import (
     AdapterSource,
     BookingInfo,
     CampusEvent,
+    CaptchaInfo,
     EventCategory,
     TimeSlotInfo,
     VenueInfo,
@@ -272,6 +273,40 @@ class VenueAdapter(BaseCampusAdapter):
         return slots
 
     # ------------------------------------------------------------------
+    # 公共 API — 验证码
+    # ------------------------------------------------------------------
+
+    async def generate_captcha(self) -> CaptchaInfo:
+        """生成预约验证码。
+
+        Returns:
+            CaptchaInfo — 包含 captcha_id 和 captcha_image (Base64)。
+
+        Raises:
+            AdapterError: 验证码生成失败。
+        """
+        query = """query {
+          generateCaptcha {
+            id captcha_image errCode errMsg
+          }
+        }"""
+        data = await self._gql(query)
+        captcha = data.get("generateCaptcha")
+        if not captcha:
+            raise AdapterError("验证码生成失败，服务端未返回数据")
+
+        err_code = captcha.get("errCode", "")
+        if err_code and err_code != "0":
+            raise AdapterError(f"验证码生成失败: {captcha.get('errMsg', err_code)}")
+
+        captcha_id = captcha.get("id", "")
+        captcha_image = captcha.get("captcha_image", "")
+        if not captcha_id or not captcha_image:
+            raise AdapterError("验证码数据不完整 (缺少 id 或 image)")
+
+        return CaptchaInfo(captcha_id=captcha_id, captcha_image=captcha_image)
+
+    # ------------------------------------------------------------------
     # 公共 API — 预约
     # ------------------------------------------------------------------
 
@@ -282,6 +317,8 @@ class VenueAdapter(BaseCampusAdapter):
         start_time: str,
         end_time: str,
         event: str = "运动健身",
+        captcha_id: str = "",
+        captcha_code: str = "",
     ) -> BookingInfo:
         """提交场馆预约。
 
@@ -291,18 +328,28 @@ class VenueAdapter(BaseCampusAdapter):
             start_time: 开始时间 (HH:MM)。
             end_time: 结束时间 (HH:MM)。
             event: 活动名称 (默认 "运动健身")。
+            captcha_id: 验证码 ID (由 generate_captcha 返回)。
+            captcha_code: 用户输入的验证码。
 
         Returns:
             BookingInfo — 创建成功的预约信息。
 
         Raises:
-            AdapterError: 预约失败 (已满 / 时段冲突 / 服务端拒绝)。
+            AdapterError: 预约失败 (已满 / 时段冲突 / 需要验证码 / 服务端拒绝)。
         """
         dt = datetime.datetime.strptime(date, "%Y-%m-%d")
         ts_ms = int(dt.timestamp() * 1000)
 
-        mutation = """mutation($model: InputAppointmentInformation!) {
-          saveAppointmentInformation(model: $model) {
+        mutation = """mutation(
+          $model: InputAppointmentInformation!,
+          $captchaId: String,
+          $captchaCode: String
+        ) {
+          saveAppointmentInformation(
+            model: $model,
+            captchaId: $captchaId,
+            captchaCode: $captchaCode
+          ) {
             appointmentId errcode msg
           }
         }"""
@@ -313,7 +360,13 @@ class VenueAdapter(BaseCampusAdapter):
             "end_time": end_time,
             "event": event,
         }
-        data = await self._gql(mutation, {"model": model})
+        variables: dict[str, Any] = {"model": model}
+        if captcha_id:
+            variables["captchaId"] = captcha_id
+        if captcha_code:
+            variables["captchaCode"] = captcha_code
+
+        data = await self._gql(mutation, variables)
         result = data.get("saveAppointmentInformation")
         if not result:
             raise AdapterError("预约提交失败，服务端未返回预约信息")
@@ -342,11 +395,17 @@ class VenueAdapter(BaseCampusAdapter):
 
         Args:
             booking_id: 预约 ID。
-            reason: 取消原因 (可选)。
+            reason: 取消原因 (服务端要求非空)。
 
         Returns:
             True 表示取消成功。
+
+        Raises:
+            AdapterError: 取消失败或原因为空。
         """
+        if not reason.strip():
+            raise AdapterError("取消预约需要填写原因 (reason 不能为空)")
+
         mutation = """mutation($id: ID!, $state: String!, $reason: String) {
           updateAppointmentInformationState(id: $id, state: $state, reason: $reason) {
             errcode msg

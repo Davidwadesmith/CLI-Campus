@@ -1185,6 +1185,16 @@ def venue_book(
         "-t",
         help="场馆类型 (用于通过编号查找场馆 UUID)。",
     ),
+    captcha_id: str = typer.Option(
+        "",
+        "--captcha-id",
+        help="验证码 ID (由 venue captcha 命令获取)。",
+    ),
+    captcha_code: str = typer.Option(
+        "",
+        "--captcha-code",
+        help="用户输入的验证码。",
+    ),
 ) -> None:
     """预约场馆 — 提交预约请求。"""
     import datetime as dt
@@ -1218,7 +1228,15 @@ def venue_book(
                     raise typer.Exit(code=1)
                 venue_id = matched[0].venue_id
 
-            return await adapter.make_booking(venue_id, booking_date, start, end, event)
+            return await adapter.make_booking(
+                venue_id,
+                booking_date,
+                start,
+                end,
+                event,
+                captcha_id=captcha_id,
+                captcha_code=captcha_code,
+            )
         finally:
             await adapter.close()
 
@@ -1244,12 +1262,43 @@ def venue_book(
         )
 
 
+@venue_app.command("captcha")
+def venue_captcha() -> None:
+    """获取场馆预约验证码 — 预约前需要先获取验证码。"""
+    from cli_campus.adapters.venue_adapter import VenueAdapter
+
+    async def _run():
+        adapter = VenueAdapter()
+        try:
+            return await adapter.generate_captcha()
+        finally:
+            await adapter.close()
+
+    try:
+        captcha = asyncio.run(_run())
+    except AuthRequiredError:
+        _handle_auth_required()
+    except AuthFailedError as exc:
+        _handle_auth_failed(exc)
+    except AdapterError as exc:
+        _handle_adapter_error(exc)
+
+    if _json_output:
+        typer.echo(json.dumps(captcha.model_dump(), ensure_ascii=False))
+    else:
+        console.print(
+            f"[green]✓[/green] 验证码已生成\n"
+            f"  验证码ID: [bold]{captcha.captcha_id}[/bold]\n"
+            f"  图片数据: [dim]{captcha.captcha_image[:80]}...[/dim]"
+        )
+
+
 @venue_app.command("cancel")
 def venue_cancel(
     booking_id: str = typer.Argument(help="要取消的预约 ID。"),
-    reason: str = typer.Option("", "--reason", "-r", help="取消原因。"),
+    reason: str = typer.Option(..., "--reason", "-r", help="取消原因 (必填)。"),
 ) -> None:
-    """取消场馆预约。"""
+    """取消场馆预约 — 需提供取消原因。"""
     from cli_campus.adapters.venue_adapter import VenueAdapter
 
     async def _run():

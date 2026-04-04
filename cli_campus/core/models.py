@@ -323,3 +323,15 @@ class BookingInfo(BaseModel):
     end_time: str = Field(default="", description="结束时间")
     state: int = Field(default=0, description="预约状态")
     event: str = Field(default="", description="活动名称")
+
+
+class CaptchaInfo(BaseModel):
+    """验证码信息 — 场馆预约验证码。
+
+    Attributes:
+        captcha_id: 验证码唯一标识 (提交预约时回传)。
+        captcha_image: 验证码图片 (Base64 编码或 URL)。
+    """
+
+    captcha_id: str = Field(..., description="验证码唯一标识")
+    captcha_image: str = Field(..., description="验证码图片 (Base64 或 URL)")
