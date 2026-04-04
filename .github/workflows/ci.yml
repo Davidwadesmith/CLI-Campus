@@ -9,6 +9,8 @@ on:
 jobs:
   lint-and-test:
     runs-on: ubuntu-latest
+    env:
+      PYTHON_KEYRING_BACKEND: keyring.backends.null.Keyring
     strategy:
       fail-fast: false
       matrix:
