@@ -196,12 +196,14 @@ pdf = [
 [package.dev-dependencies]
 dev = [
     { name = "mypy" },
-    { name = "pillow" },
     { name = "pymupdf" },
     { name = "pytest" },
     { name = "pytest-asyncio" },
-    { name = "rapidocr-onnxruntime" },
     { name = "ruff" },
+]
+scripts = [
+    { name = "pillow" },
+    { name = "rapidocr-onnxruntime" },
 ]
 
 [package.metadata]
@@ -225,12 +227,14 @@ provides-extras = ["pdf"]
 [package.metadata.requires-dev]
 dev = [
     { name = "mypy", specifier = ">=1.8.0" },
-    { name = "pillow", specifier = ">=12.2.0" },
     { name = "pymupdf", specifier = ">=1.27.2.2" },
     { name = "pytest", specifier = ">=8.0.0" },
     { name = "pytest-asyncio", specifier = ">=0.23.0" },
-    { name = "rapidocr-onnxruntime", specifier = ">=1.4.4" },
     { name = "ruff", specifier = ">=0.4.0" },
+]
+scripts = [
+    { name = "pillow", specifier = ">=12.2.0" },
+    { name = "rapidocr-onnxruntime", specifier = ">=1.4.4" },
 ]
 
 [[package]]

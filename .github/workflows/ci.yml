@@ -36,4 +36,4 @@ jobs:
         run: uv run ruff format --check .
 
       - name: Test — pytest
-        run: uv run pytest -v
+        run: uv run pytest -x -v --tb=long
